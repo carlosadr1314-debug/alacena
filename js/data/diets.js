@@ -1,0 +1,152 @@
+// Las 12 dietas del reporte, con reglas que el motor usa para filtrar recetas.
+// exclude: banderas de ingrediente que la dieta no permite (ver ingredients.js)
+// boost:   banderas que suben la receta en el orden de sugerencias
+// kcalMax: límite por porción según tiempo de comida (solo dietas bajas en calorías)
+
+export const DIETS = [
+  {
+    id: 'mediterranea',
+    name: 'Mediterránea',
+    short: 'Aceite de oliva, verduras, legumbres y pescado.',
+    evidence: 'alta',
+    proof: 'Ensayo PREDIMED (≈7,400 personas): ~30% menos eventos cardiovasculares.',
+    color: '#2B7FB8',
+    exclude: ['processed', 'sugar', 'satfat'],
+    boost: ['fish', 'legume', 'olive', 'nut', 'veg'],
+  },
+  {
+    id: 'dash',
+    name: 'DASH',
+    short: 'Para la presión arterial: poca sal, muchas frutas y verduras.',
+    evidence: 'alta',
+    proof: 'Diseñada por el NIH. #1 para corazón e hipertensión en U.S. News 2026.',
+    color: '#C93A3F',
+    exclude: ['processed', 'sugar', 'sodium', 'satfat'],
+    boost: ['veg', 'fruit', 'legume', 'lowfatdairy', 'wholegrain'],
+  },
+  {
+    id: 'keto',
+    name: 'Keto',
+    short: 'Muy baja en carbohidratos (<50 g/día), alta en grasa.',
+    evidence: 'media',
+    proof: 'Alta evidencia en epilepsia; moderada en diabetes tipo 2. Puede subir el LDL.',
+    color: '#7A4FD0',
+    exclude: ['carb', 'sugar'],
+    boost: ['healthyfat', 'egg', 'fish', 'veg'],
+    warning: 'Consulta a tu médico si tienes enfermedad renal, hepática, diabetes con medicamento o estás embarazada.',
+  },
+  {
+    id: 'vegetariana',
+    name: 'Vegetariana / Vegana',
+    short: 'Sin carne. En modo vegano, sin ningún producto animal.',
+    evidence: 'alta',
+    proof: 'La Academia de Nutrición y Dietética la considera adecuada en todas las etapas de vida.',
+    color: '#2E8B57',
+    exclude: ['meat', 'poultry', 'fish'],
+    veganExtra: ['egg', 'dairy', 'honey'],
+    boost: ['legume', 'soy', 'veg', 'nut'],
+    warning: 'En modo vegano necesitas suplemento de vitamina B12.',
+  },
+  {
+    id: 'flexitariana',
+    name: 'Flexitariana',
+    short: 'Principalmente vegetal, con carne ocasional y en poca cantidad.',
+    evidence: 'media',
+    proof: 'Dieta de Salud Planetaria (EAT-Lancet): menor mortalidad en grandes estudios de seguimiento.',
+    color: '#5C9E31',
+    exclude: ['processed', 'redMeat'],
+    boost: ['legume', 'veg', 'wholegrain', 'nut'],
+  },
+  {
+    id: 'nordica',
+    name: 'Nórdica',
+    short: 'Pescado, avena, centeno, moras y tubérculos.',
+    evidence: 'media',
+    proof: 'Metaanálisis 2022 (>1 millón de personas): 26% menos mortalidad cardiovascular.',
+    color: '#3D6E9E',
+    exclude: ['processed', 'sugar', 'satfat'],
+    boost: ['fish', 'wholegrain', 'berry', 'veg'],
+  },
+  {
+    id: 'portfolio',
+    name: 'Portfolio',
+    short: 'Para bajar el colesterol: soya, avena, nueces y legumbres.',
+    evidence: 'alta',
+    proof: 'Metaanálisis 2018: baja el colesterol LDL ~17%.',
+    color: '#B5762A',
+    exclude: ['meat', 'poultry', 'fish', 'processed', 'satfat', 'sugar'],
+    boost: ['soy', 'nut', 'legume', 'oat'],
+  },
+  {
+    id: 'mind',
+    name: 'MIND',
+    short: 'Mediterránea + DASH con hojas verdes y moras para el cerebro.',
+    evidence: 'baja',
+    proof: 'Sana, pero el ensayo de 2023 (NEJM) no demostró protección contra el deterioro cognitivo.',
+    color: '#6A4FD8',
+    exclude: ['processed', 'sugar', 'satfat', 'redMeat', 'fried'],
+    boost: ['leafy', 'berry', 'nut', 'fish', 'legume'],
+  },
+  {
+    id: 'bajacal',
+    name: 'Baja en calorías',
+    short: 'Porciones controladas para bajar de peso.',
+    evidence: 'alta',
+    proof: 'Ensayo DiRECT: 46% logró remisión de diabetes tipo 2 al año (con supervisión médica).',
+    color: '#0E8C8C',
+    exclude: ['processed', 'sugar', 'satfat'],
+    boost: ['veg', 'leanprotein'],
+    kcalMax: { desayuno: 400, comida: 550, cena: 450, snack: 200 },
+    warning: 'Las versiones muy bajas en calorías (≈850 kcal/día) solo con supervisión médica.',
+  },
+  {
+    id: 'fodmap',
+    name: 'Baja en FODMAP',
+    short: 'Para colon irritable: sin ajo, cebolla, trigo ni lactosa.',
+    evidence: 'media',
+    proof: 'Recomendada por el Colegio Americano de Gastroenterología (guía 2021).',
+    color: '#C25E8A',
+    exclude: ['fodmap'],
+    boost: ['veg', 'leanprotein'],
+    warning: 'Es temporal: se recomienda hacerla con nutriólogo y reintroducir alimentos.',
+  },
+  {
+    id: 'ayuno',
+    name: 'Ayuno intermitente',
+    short: 'Comes dentro de una ventana de horas (ej. 16:8).',
+    evidence: 'media',
+    proof: 'BMJ 2025 (99 ensayos): funciona igual que reducir calorías de forma tradicional.',
+    color: '#4A5BD4',
+    exclude: ['processed', 'sugar'],
+    boost: ['leanprotein', 'veg', 'legume'],
+    fasting: true,
+  },
+  {
+    id: 'biencomer',
+    name: 'Plato del Bien Comer',
+    short: 'La guía oficial de México: variado, con agua y sin ultraprocesados.',
+    evidence: 'oficial',
+    proof: 'Secretaría de Salud (NOM-043), actualizada con las Guías Alimentarias 2023.',
+    color: '#C2410C',
+    exclude: ['processed', 'sugar'],
+    boost: ['veg', 'fruit', 'legume', 'wholegrain'],
+  },
+];
+
+export const EVIDENCE_LABEL = {
+  alta: 'Evidencia alta',
+  media: 'Evidencia moderada',
+  baja: 'Evidencia limitada',
+  oficial: 'Guía oficial',
+};
+
+export const MEALS = [
+  { id: 'desayuno', name: 'Desayuno', icon: 'sunrise' },
+  { id: 'snack', name: 'Snack', icon: 'apple' },
+  { id: 'comida', name: 'Comida', icon: 'sun' },
+  { id: 'cena', name: 'Cena', icon: 'moon' },
+];
+
+export function getDiet(id) {
+  return DIETS.find((d) => d.id === id) || DIETS[0];
+}

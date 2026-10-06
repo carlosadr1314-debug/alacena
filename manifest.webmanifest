@@ -1,0 +1,17 @@
+{
+  "name": "Alacena — tu dieta con lo que tienes",
+  "short_name": "Alacena",
+  "description": "Sigue tu dieta cocinando con lo que tienes en casa: recetas, plan semanal y rachas.",
+  "lang": "es-MX",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFDF7",
+  "theme_color": "#FFFDF7",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
