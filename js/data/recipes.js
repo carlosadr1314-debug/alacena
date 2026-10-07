@@ -3,6 +3,8 @@
 // kcal, p (proteína g), c (carbohidratos g), f (grasa g): aproximados por porción.
 // La compatibilidad con cada dieta se calcula sola a partir de los ingredientes.
 
+import { EXTRA_RECIPES } from './recipes-extra.js';
+
 const R = (id, name, meals, time, kcal, p, c, f, ing, steps, extra = {}) => ({
   id, name, meals, time, kcal, p, c, f, servings: 1,
   ingredients: ing.split('|').map((s) => {
@@ -12,7 +14,7 @@ const R = (id, name, meals, time, kcal, p, c, f, ing, steps, extra = {}) => ({
   steps, ...extra,
 });
 
-export const RECIPES = [
+const BASE_RECIPES = [
   // ───────────── DESAYUNOS ─────────────
   R('huevos_mexicana', 'Huevos a la mexicana', ['desayuno', 'cena'], 12, 290, 17, 7, 21,
     'huevo:2 piezas|jitomate:1 pieza|cebolla:1/4 pieza|chile_serrano:1 pieza|aceite_oliva:1 cdita|sal:al gusto',
@@ -411,5 +413,7 @@ export const RECIPES = [
      'Asa el panela en rebanadas 1 minuto por lado.',
      'Sirve con salsa verde.']),
 ];
+
+export const RECIPES = [...BASE_RECIPES, ...EXTRA_RECIPES];
 
 export const RECIPE_BY_ID = Object.fromEntries(RECIPES.map((r) => [r.id, r]));

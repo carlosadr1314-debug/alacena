@@ -16,6 +16,7 @@ export const DEFAULT_STATE = {
     fastStart: '12:00', // inicio de la ventana de alimentación (ayuno)
     fastHours: 8,
     kcalGoal: 2000,    // meta diaria de calorías (Pro: calorías y macros)
+    body: null,        // datos opcionales para calcular la meta {sex, age, weight, height, activity, goal}
   },
   pantry: [],          // ids del catálogo
   customPantry: [],    // [{id, name}] ingredientes escritos por el usuario
@@ -35,6 +36,7 @@ export const DEFAULT_STATE = {
   suggestions: [],     // dietas sugeridas por el usuario [{id, name, why, source, date, status}]
   water: {},           // { 'YYYY-MM-DD': vasos }
   challenges: {},      // { 'YYYY-MM-DD': true } retos del día completados
+  waterXp: {},         // { 'YYYY-MM-DD': vasos que ya dieron XP }
 };
 
 let state = load();

@@ -1,6 +1,6 @@
 // Interfaz principal. HTML/CSS/JS vainilla, sin frameworks ni build.
 
-import { APP_NAME } from './config.js';
+import { APP_NAME, CONTACT_EMAIL } from './config.js';
 import { getState, update, subscribe, resetState, today, addDays, parseDate } from './store.js';
 import { DIETS, EVIDENCE_LABEL, getDiet, CUSTOM_RULES, CUSTOM_LIMITS, customDiets } from './data/diets.js';
 import { INGREDIENTS, ING, CATEGORIES, LOCATIONS, QUICK_PICKS, norm } from './data/ingredients.js';
@@ -152,7 +152,7 @@ function renderOnboarding() {
     </div>
     <div class="sticky-foot stack-sm">
       <button class="btn btn-block" data-act="ob-next">Empezar</button>
-      <p class="tiny muted center">Toma menos de un minuto.</p>
+      <p class="tiny muted center">Toma menos de un minuto. Al continuar aceptas los <button class="linkbtn tiny" data-act="terms">Términos y privacidad</button>.</p>
     </div>`;
   } else if (o.step === 1) {
     body = `${top()}
@@ -268,7 +268,7 @@ function todayScreen() {
   return `<div class="stack">
     <div class="speech">
       <button class="alita-btn" data-act="alita" aria-label="Toca a Valita para un consejo">${mascot(allDone ? 'cheer' : 'happy')}</button>
-      <div class="bubble" id="alita-bubble" aria-live="polite">${ui.tip ? esc(ui.tip) : msg}<span class="bubble-hint">Tócame para un consejo</span></div>
+      <div class="bubble" id="alita-bubble" aria-live="polite">${ui.tip ? tipHtml(ui.tip) : msg}<span class="bubble-hint">Tócame para un consejo</span></div>
     </div>
 
     <div class="card">
@@ -332,13 +332,172 @@ const TIPS = [
   'Dormir bien también influye en el hambre del día siguiente.',
 ];
 
+const TIP_PREFIX = ['Valita dice', 'Valita aconseja', 'Valita sabe', 'Dato de Valita', 'Valita recomienda'];
+
 function alitaTip() {
   const diet = getDiet(S().profile.diet);
-  const pool = [...TIPS, `Tu dieta ${diet.name}: ${diet.short}`, diet.proof && !diet.custom ? `Dato: ${diet.proof}` : null].filter(Boolean);
+  const pool = [...TIPS, `Tu dieta ${diet.name}: ${diet.short}`, diet.proof && !diet.custom ? diet.proof : null].filter(Boolean);
   let t;
-  do { t = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && t === ui.tip);
-  return t;
+  do { t = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && t === ui.tip?.text);
+  return { text: t, prefix: TIP_PREFIX[Math.floor(Math.random() * TIP_PREFIX.length)] };
 }
+
+function tipHtml(tip) {
+  return `<span class="tip-prefix">${esc(tip.prefix)}:</span> ${esc(tip.text)}`;
+}
+
+function floatXp(anchor, xp) {
+  if (!anchor) return;
+  const r = anchor.getBoundingClientRect();
+  const el = document.createElement('span');
+  el.className = 'xp-float num';
+  el.setAttribute('aria-hidden', 'true');
+  el.textContent = `+${xp} XP`;
+  el.style.left = `${r.left + r.width / 2}px`;
+  el.style.top = `${r.top}px`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+// Snacks para alcanzar la meta de calorías del día
+function openSnackBoost() {
+  const tg = macroTargets();
+  const left = Math.max(0, Math.round(tg.kcal - dayTotals(today()).kcal));
+  const target = Math.min(left, 350);
+  const list = rankRecipes({ mealType: 'snack', seed: today() })
+    .map((x) => ({ ...x, diff: Math.abs(x.recipe.kcal - target) + (1 - x.match.ratio) * 400 }))
+    .sort((a, b) => a.diff - b.diff)
+    .slice(0, 6);
+  const body = `<div class="stack">
+    <div class="speech">${mascot('happy', 'sm')}<div class="bubble"><span class="tip-prefix">Valita aconseja:</span> te faltan <b class="num">${left} kcal</b>. Estos snacks de tu dieta te acercan a tu meta.</div></div>
+    <div class="stack-sm">${list.map((x) => recipeCard(x.recipe, 'extra', x.match)).join('') || emptyRecipes()}</div>
+    <p class="tiny muted center">Los snacks extra suman a tus calorías y dan +${XP.extra} XP. No cuentan como comida de tu ruta.</p>
+  </div>`;
+  openSheet('<h2>Snacks para tu meta</h2>', body);
+}
+
+// ── Calculadora de meta (fórmula de Mifflin-St Jeor) ──
+const ACTIVITY = [
+  { v: 1.2, label: 'Poco o nada de ejercicio' },
+  { v: 1.375, label: 'Ligero (1–3 días por semana)' },
+  { v: 1.55, label: 'Moderado (3–5 días por semana)' },
+  { v: 1.725, label: 'Intenso (6–7 días por semana)' },
+];
+const GOALS = [
+  { v: 'bajar', label: 'Bajar de peso', delta: -400 },
+  { v: 'mantener', label: 'Mantener mi peso', delta: 0 },
+  { v: 'subir', label: 'Subir de peso / masa muscular', delta: 300 },
+];
+
+function openKcalCalc(result = null, error = '') {
+  const b = S().profile.body || { sex: 'm', age: '', weight: '', height: '', activity: 1.375, goal: 'mantener' };
+  const body = `<div class="stack">
+    <p class="small muted">Te doy una estimación con la fórmula de Mifflin-St Jeor, de las más usadas por nutriólogos. Es un punto de partida, no una indicación médica.</p>
+    <div>
+      <p class="label" id="kc-sex-l">Sexo</p>
+      <div class="segmented" role="group" aria-labelledby="kc-sex-l">
+        <button data-act="kc-sex" data-v="m" aria-pressed="${b.sex === 'm'}">Hombre</button>
+        <button data-act="kc-sex" data-v="f" aria-pressed="${b.sex === 'f'}">Mujer</button>
+      </div>
+    </div>
+    <div class="kcal-grid">
+      <div class="field"><label for="kc-age">Edad</label><input id="kc-age" class="input num" type="number" inputmode="numeric" min="18" max="90" value="${esc(b.age)}" placeholder="años"></div>
+      <div class="field"><label for="kc-w">Peso (kg)</label><input id="kc-w" class="input num" type="number" inputmode="decimal" min="35" max="250" step="0.1" value="${esc(b.weight)}" placeholder="kg"></div>
+      <div class="field"><label for="kc-h">Estatura (cm)</label><input id="kc-h" class="input num" type="number" inputmode="numeric" min="130" max="220" value="${esc(b.height)}" placeholder="cm"></div>
+    </div>
+    <div class="field"><label for="kc-act">Actividad física</label>
+      <select id="kc-act" class="input">${ACTIVITY.map((a) => `<option value="${a.v}" ${Number(b.activity) === a.v ? 'selected' : ''}>${a.label}</option>`).join('')}</select></div>
+    <div class="field"><label for="kc-goal">Tu objetivo</label>
+      <select id="kc-goal" class="input">${GOALS.map((g) => `<option value="${g.v}" ${b.goal === g.v ? 'selected' : ''}>${g.label}</option>`).join('')}</select></div>
+    ${error ? `<div class="notice err" role="alert">${icon('alert')}<span>${esc(error)}</span></div>` : ''}
+    ${result ? `<div class="card brand stack-sm" role="status">
+      <div class="row between"><span class="small">Lo que tu cuerpo usa en reposo</span><b class="num">${result.bmr} kcal</b></div>
+      <div class="row between"><span class="small">Con tu actividad diaria</span><b class="num">${result.tdee} kcal</b></div>
+      <div class="row between"><b>Meta recomendada</b><b class="num" style="font-size:22px;color:var(--brand-ink)">${result.goal} kcal</b></div>
+      ${result.floored ? '<p class="tiny muted">Ajustamos al mínimo seguro recomendado. Para bajar más rápido, consulta a un profesional.</p>' : ''}
+    </div>` : ''}
+    <p class="tiny muted">Estos datos se guardan solo en tu teléfono. No los recomendamos para embarazo, lactancia, menores de edad o condiciones médicas: ahí consulta a un profesional.</p>
+  </div>`;
+  const foot = result
+    ? `<button class="btn btn-block" data-act="kcal-calc-use" data-kcal="${result.goal}">Usar ${result.goal} kcal como mi meta</button>`
+    : `<button class="btn btn-block" data-act="kcal-calc-run">Calcular</button>`;
+  openSheet('<h2>Calcular mi meta</h2>', body, foot, { replace: !!document.querySelector('.sheet') });
+}
+
+function readKcalForm() {
+  const prev = S().profile.body || {};
+  return {
+    sex: ui.kcSex || prev.sex || 'm',
+    age: Number(document.getElementById('kc-age')?.value) || '',
+    weight: Number(document.getElementById('kc-w')?.value) || '',
+    height: Number(document.getElementById('kc-h')?.value) || '',
+    activity: Number(document.getElementById('kc-act')?.value) || 1.375,
+    goal: document.getElementById('kc-goal')?.value || 'mantener',
+  };
+}
+
+function runKcalCalc() {
+  const b = readKcalForm();
+  update((s) => { s.profile.body = b; });
+  if (!(b.age >= 18 && b.age <= 90)) return openKcalCalc(null, 'Escribe una edad entre 18 y 90 años.');
+  if (!(b.weight >= 35 && b.weight <= 250)) return openKcalCalc(null, 'Escribe tu peso en kilos (entre 35 y 250).');
+  if (!(b.height >= 130 && b.height <= 220)) return openKcalCalc(null, 'Escribe tu estatura en centímetros (entre 130 y 220).');
+  const bmr = Math.round(10 * b.weight + 6.25 * b.height - 5 * b.age + (b.sex === 'm' ? 5 : -161));
+  const tdee = Math.round(bmr * b.activity);
+  const delta = GOALS.find((g) => g.v === b.goal)?.delta || 0;
+  const min = b.sex === 'm' ? 1500 : 1200;
+  let goal = Math.round((tdee + delta) / 50) * 50;
+  const floored = goal < min;
+  if (floored) goal = min;
+  openKcalCalc({ bmr, tdee, goal, floored });
+}
+
+// Reparto sugerido de calorías por tiempo de comida
+const MEAL_SPLIT = {
+  3: { desayuno: 0.3, comida: 0.4, cena: 0.3 },
+  4: { desayuno: 0.25, snack1: 0.1, comida: 0.4, cena: 0.25 },
+  5: { desayuno: 0.25, snack1: 0.1, comida: 0.35, snack2: 0.1, cena: 0.2 },
+};
+
+// ── Términos y privacidad ──
+function openTerms() {
+  const contact = CONTACT_EMAIL
+    ? `<a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a>`
+    : 'el apartado <b>Sugerir una dieta</b> en tu Perfil (pronto tendremos un correo de contacto)';
+  const body = `<div class="stack terms">
+    <p class="tiny muted">Última actualización: octubre de 2026 · Versión de prueba (beta)</p>
+
+    <section><h3>1. Aviso de salud</h3>
+      <p>${esc(APP_NAME)} te da información general sobre alimentación y recetas. <b>No es un servicio médico</b> y no sustituye la consulta con un médico, nutriólogo u otro profesional de la salud.</p>
+      <p>Si tienes una enfermedad (por ejemplo diabetes, enfermedad renal o hepática), estás embarazada o en lactancia, tomas medicamentos o eres menor de edad, consulta a un profesional antes de cambiar tu alimentación o seguir una dieta restrictiva.</p>
+      <p>Las calorías y nutrientes de las recetas son <b>aproximados</b>. Las recetas creadas con IA pueden contener errores; revisa siempre los ingredientes, sobre todo si tienes alergias.</p></section>
+
+    <section><h3>2. Qué datos usamos y dónde se guardan</h3>
+      <p><b>En tu teléfono:</b> tu nombre, dieta, despensa, comidas registradas, agua, racha, metas y, si los escribes, edad, peso y estatura. Todo se guarda en el almacenamiento de tu navegador. No tenemos una base de datos con tu información personal.</p>
+      <p><b>Lo que sale de tu teléfono solo cuando usas ciertas funciones:</b></p>
+      <ul>
+        <li><b>Recetas con IA:</b> se envía tu dieta, la lista de tu despensa y tu antojo (si lo escribes). No se envía tu nombre.</li>
+        <li><b>Escanear con foto:</b> se envía la foto, reducida, solo para reconocer ingredientes. No la guardamos.</li>
+        <li><b>Sugerir una dieta:</b> se guarda lo que escribes en el formulario y el nombre de tu dieta actual, para revisarla.</li>
+      </ul>
+      <p>Estas funciones usan servicios de terceros: <b>Cloudflare</b> (servidor intermedio) y <b>Google Gemini</b> (inteligencia artificial). Durante la beta usamos la versión gratuita de Gemini, cuyos términos permiten a Google usar el contenido enviado para mejorar sus productos. Por eso te pedimos <b>no escribir ni fotografiar datos personales</b> (nombres, documentos, etc.).</p></section>
+
+    <section><h3>3. Tus derechos</h3>
+      <p>Puedes ver y corregir tus datos dentro de la app, y borrarlos cuando quieras con <b>Perfil → Borrar mis datos</b>. Si enviaste una sugerencia y quieres que la eliminemos, escríbenos.</p>
+      <p>Conforme a la legislación mexicana de protección de datos personales, puedes ejercer tus derechos de acceso, rectificación, cancelación y oposición (ARCO) escribiendo a ${contact}.</p></section>
+
+    <section><h3>4. Uso de la app</h3>
+      <p>La app es gratuita durante la beta. Algunos módulos marcados como <b>PRO</b> podrán tener costo en el futuro; te avisaremos antes de cualquier cobro y nunca se cobrará sin tu aceptación.</p>
+      <p>Te pedimos usarla de forma personal y no intentar dañar el servicio ni abusar de las funciones de IA.</p></section>
+
+    <section><h3>5. Cambios</h3>
+      <p>Podemos actualizar estos términos. Si el cambio es importante, te lo mostraremos dentro de la app.</p></section>
+
+    <section><h3>6. Contacto</h3><p>Dudas o comentarios: ${contact}.</p></section>
+  </div>`;
+  openSheet('<h2>Términos y privacidad</h2>', body);
+}
+
 
 function weekStrip() {
   const week = lastWeek();
@@ -362,7 +521,7 @@ function challengeCard() {
 function waterCard() {
   const n = waterToday();
   return `<div class="card">
-    <div class="row between"><b>Agua de hoy</b><span class="small muted num">${n} de ${WATER_GOAL} vasos</span></div>
+    <div class="row between"><b>Agua de hoy</b><span class="small muted num">${n} de ${WATER_GOAL} vasos · +${XP.water} XP c/u</span></div>
     <div class="glasses" role="group" aria-label="Vasos de agua">
       ${Array.from({ length: WATER_GOAL }, (_, i) => `<button class="glass ${i < n ? 'full' : ''}" data-act="water" data-n="${i + 1}" aria-label="Vaso ${i + 1}${i < n ? ', tomado' : ''}" aria-pressed="${i < n}">
         <svg viewBox="0 0 24 32" aria-hidden="true"><path class="glass-water" d="M5.6 ${i < n ? 8 : 30} L18.4 ${i < n ? 8 : 30} L17 30 H7 Z"/><path class="glass-shape" d="M3 3h18l-2.6 26a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z"/></svg>
@@ -394,6 +553,8 @@ function nutritionCard() {
       <span class="small bold" style="margin-left:auto;color:${over ? 'var(--warn)' : 'var(--ok-ink)'}">${over ? `${Math.round(tot.kcal - tg.kcal)} de más` : `Te quedan ${Math.round(tg.kcal - tot.kcal)}`}</span></div>
     <div class="progress" role="progressbar" aria-label="Calorías de hoy" aria-valuemin="0" aria-valuemax="${tg.kcal}" aria-valuenow="${Math.round(tot.kcal)}"><span style="width:${pct * 100}%;${over ? 'background:var(--warn)' : ''}"></span></div>
     ${macro('p', 'Proteína', '#2B7FB8')}${macro('c', 'Carbohidratos', '#D9790F')}${macro('f', 'Grasa', '#7A4FD0')}
+    ${!over && tg.kcal - tot.kcal >= 80 ? `<button class="btn btn-ghost btn-block accent" data-act="snack-boost" style="margin-top:6px">${icon('apple', 'icon-sm')} Snacks para llegar a tu meta</button>
+      <p class="tiny muted center">Te faltan ${Math.round(tg.kcal - tot.kcal)} kcal. Te sugiero snacks de tu dieta.</p>` : ''}
   </div>`;
 }
 
@@ -604,9 +765,12 @@ function openRecipe(id, slotId = null) {
   const type = r.meals[0];
   const slots = getSlots(s.profile.mealsPerDay);
   const doneIds = new Set(todayLog().map((l) => l.slot));
-  const targetSlot = slotId
-    ? slots.find((x) => x.id === slotId)
-    : slots.find((x) => r.meals.includes(x.type) && !doneIds.has(x.id)) || slots.find((x) => !doneIds.has(x.id));
+  const isExtra = String(slotId || '').startsWith('extra');
+  const targetSlot = isExtra
+    ? { id: slotId === 'extra' ? 'extra_' + Date.now().toString(36) : slotId, name: 'Snack extra', extra: true }
+    : slotId
+      ? slots.find((x) => x.id === slotId)
+      : slots.find((x) => r.meals.includes(x.type) && !doneIds.has(x.id)) || slots.find((x) => !doneIds.has(x.id));
   const slotDone = targetSlot && doneIds.has(targetSlot.id);
   const heroColor = r.ai ? 'var(--ai)' : { desayuno: '#B5600A', snack: '#26774A', comida: '#C2410C', cena: '#3D4CC0' }[type];
   const saved = r.ai && s.aiRecipes[r.id];
@@ -662,8 +826,9 @@ function openRecipe(id, slotId = null) {
     foot = `<button class="btn btn-block" disabled>${targetSlot ? `Ya registraste tu ${targetSlot.name.toLowerCase()}` : 'Ya completaste todas tus comidas de hoy'}</button>`;
   } else {
     const bonus = m.missing.length === 0 ? XP.perfectMatch : 0;
-    foot = `<button class="btn btn-ok btn-block" data-act="cook" data-id="${r.id}" data-slot="${targetSlot.id}">${icon('check')} ¡La cociné! +${XP.meal + bonus} XP</button>
-      <p class="tiny muted center" style="margin-top:8px">Se registra como tu ${targetSlot.name.toLowerCase()} de hoy.</p>`;
+    const gain = targetSlot.extra ? XP.extra : XP.meal + bonus;
+    foot = `<button class="btn btn-ok btn-block" data-act="cook" data-id="${r.id}" data-slot="${targetSlot.id}">${icon('check')} ${targetSlot.extra ? '¡Me lo comí!' : '¡La cociné!'} +${gain} XP</button>
+      <p class="tiny muted center" style="margin-top:8px">${targetSlot.extra ? 'Se suma como snack extra a tus calorías de hoy.' : `Se registra como tu ${targetSlot.name.toLowerCase()} de hoy.`}</p>`;
   }
   openSheet('', body, foot);
 }
@@ -959,7 +1124,7 @@ function profileScreen() {
     ${ui.installEvt ? `<button class="btn btn-ghost btn-block" data-act="install">${icon('download')} Instalar en mi teléfono</button>` : ''}
 
     <button class="btn btn-ghost btn-block" data-act="reset" style="--t:var(--err)">${icon('trash')} Borrar mis datos</button>
-    <p class="disclaimer">${esc(APP_NAME)} da información general y no sustituye la consulta con un médico o nutriólogo.</p>
+    <button class="btn btn-ghost btn-block" data-act="terms">${icon('info', 'icon-sm')} Términos y privacidad</button>
   </div>`;
 }
 
@@ -978,11 +1143,56 @@ function streakFreezeCard() {
 }
 
 function kcalGoalCard() {
+  const s = S();
   const tg = macroTargets();
-  return `<div class="card stack-sm">
-    <div class="field"><label for="kcal-goal">Meta diaria de calorías</label>
-      <input id="kcal-goal" class="input num" type="number" inputmode="numeric" min="1000" max="5000" step="50" value="${tg.kcal}" aria-describedby="kcal-help"></div>
-    <p class="field-help" id="kcal-help">Tus macros según tu dieta: proteína ${tg.p} g · carbohidratos ${tg.c} g · grasa ${tg.f} g. Si no sabes tu meta, pregúntale a tu nutriólogo.</p>
+  const tot = dayTotals(today());
+  const slots = getSlots(s.profile.mealsPerDay);
+  const split = MEAL_SPLIT[slots.length] || MEAL_SPLIT[3];
+  const mk = { p: tg.p * 4, c: tg.c * 4, f: tg.f * 9 };
+  const sum = mk.p + mk.c + mk.f;
+  const pct = { p: Math.round((mk.p / sum) * 100), c: Math.round((mk.c / sum) * 100), f: 0 };
+  pct.f = 100 - pct.p - pct.c;
+  const rows = [
+    ['p', 'Proteína', '#2B7FB8'],
+    ['c', 'Carbohidratos', '#D9790F'],
+    ['f', 'Grasa', '#7A4FD0'],
+  ];
+  const body = s.profile.body;
+  return `<div class="section-title"><h2>Meta diaria de calorías</h2>${proBadge('nutrition')}</div>
+  <div class="card stack">
+    <div class="row between" style="align-items:flex-end">
+      <div><span class="kcal-big num">${tg.kcal}</span> <span class="muted bold">kcal al día</span></div>
+      <span class="small muted num">Hoy: ${Math.round(tot.kcal)} (${Math.round((tot.kcal / tg.kcal) * 100)}%)</span>
+    </div>
+    <div class="row" style="gap:8px">
+      <div class="field" style="flex:1"><label for="kcal-goal" class="small">Cambiar meta</label>
+        <input id="kcal-goal" class="input num" type="number" inputmode="numeric" min="1000" max="5000" step="50" value="${tg.kcal}"></div>
+      <button class="btn btn-ghost" style="align-self:flex-end" data-act="kcal-calc">${icon('sliders', 'icon-sm')} Calcular</button>
+    </div>
+    ${body?.weight ? `<p class="tiny muted">Calculada con: ${body.sex === 'm' ? 'hombre' : 'mujer'}, ${body.age} años, ${body.weight} kg, ${body.height} cm.</p>` : ''}
+
+    <div>
+      <p class="label">Tus macros (según tu dieta ${esc(getDiet(s.profile.diet).name)})</p>
+      <div class="macro-stack" role="img" aria-label="Proteína ${pct.p}%, carbohidratos ${pct.c}%, grasa ${pct.f}%">
+        ${rows.map(([k, , c]) => `<span style="width:${pct[k]}%;background:${c}"></span>`).join('')}
+      </div>
+      <table class="macro-table">
+        <thead><tr><th scope="col">Macro</th><th scope="col">Gramos</th><th scope="col">kcal</th><th scope="col">%</th><th scope="col">Hoy</th></tr></thead>
+        <tbody>${rows.map(([k, l, c]) => `<tr><th scope="row"><span class="dot-sw" style="background:${c}"></span>${l}</th><td class="num">${tg[k]} g</td><td class="num">${mk[k]}</td><td class="num">${pct[k]}%</td><td class="num">${Math.round(tot[k])} g</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+
+    <div>
+      <p class="label">Reparto sugerido por comida</p>
+      <ul class="meal-split">${slots.map((sl) => {
+        const share = split[sl.id] || 0;
+        const k = Math.round((tg.kcal * share) / 10) * 10;
+        const eaten = (s.log[today()] || []).filter((l) => l.slot === sl.id).reduce((a, l) => a + (l.kcal || 0), 0);
+        return `<li><span class="meal-ic">${icon(MEAL_ICON[sl.type], 'icon-sm')}</span><span style="flex:1">${sl.name}<br><span class="tiny muted">${Math.round(share * 100)}% de tu día</span></span>
+          <span class="num bold">${k} kcal</span>${eaten ? `<span class="badge alta num">${eaten} hoy</span>` : ''}</li>`;
+      }).join('')}</ul>
+    </div>
+    <p class="tiny muted">1 g de proteína o carbohidrato = 4 kcal · 1 g de grasa = 9 kcal. Si tienes una condición de salud, define tu meta con un profesional.</p>
   </div>`;
 }
 
@@ -1453,16 +1663,35 @@ const actions = {
   alita: () => {
     ui.tip = alitaTip();
     const b = document.getElementById('alita-bubble');
-    if (b) b.innerHTML = `${esc(ui.tip)}<span class="bubble-hint">Tócame otra vez</span>`;
+    if (b) b.innerHTML = `${tipHtml(ui.tip)}<span class="bubble-hint">Tócame otra vez</span>`;
     const m = document.querySelector('.alita-btn .mascot');
     if (m) { m.classList.remove('happy'); m.classList.add('cheer'); setTimeout(() => { m.classList.remove('cheer'); m.classList.add('happy'); }, 900); }
   },
   water: (el) => {
-    const res = setWater(Number(el.dataset.n));
+    const n = Number(el.dataset.n);
+    const res = setWater(n);
     rerenderMain();
+    if (res.xp) floatXp(document.querySelector(`[data-act="water"][data-n="${Math.min(n, WATER_GOAL)}"]`), res.xp);
     if (res.challenge) celebrateSmall('¡Reto del día completado! +10 XP');
-    else if (waterToday() === WATER_GOAL) toast('¡Meta de agua cumplida!');
+    else if (waterToday() === WATER_GOAL && res.xp) toast(`¡Meta de agua cumplida! +${res.xp} XP`);
   },
+  'snack-boost': () => openSnackBoost(),
+  'kc-sex': (el) => {
+    ui.kcSex = el.dataset.v;
+    const b = readKcalForm();
+    update((s) => { s.profile.body = b; });
+    openKcalCalc();
+  },
+  'kcal-calc': () => openKcalCalc(),
+  'kcal-calc-run': () => runKcalCalc(),
+  'kcal-calc-use': (el) => {
+    const v = Number(el.dataset.kcal);
+    update((s) => { s.profile.kcalGoal = v; });
+    closeSheet();
+    rerenderMain();
+    toast(`Meta actualizada: ${v} kcal`);
+  },
+  terms: () => openTerms(),
 
   // Dietas propias
   'diet-new': () => {

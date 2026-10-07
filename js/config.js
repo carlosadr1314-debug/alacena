@@ -12,6 +12,9 @@ export const AI_ENDPOINT = '';
 // Cuida tu cuota gratuita de Gemini durante las pruebas.
 export const AI_DAILY_LIMIT = 20;
 
+// Correo de contacto que aparece en Términos y privacidad (déjalo vacío si aún no tienes)
+export const CONTACT_EMAIL = '';
+
 // ── Módulos Pro ──
 // enforce: false → beta: todo desbloqueado para todos (se muestra la etiqueta PRO).
 // enforce: true  → los módulos de la lista requieren plan Pro.

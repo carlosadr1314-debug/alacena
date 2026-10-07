@@ -12,6 +12,9 @@ export const XP = {
   perfectDay: 25,    // completar todos los tiempos de comida del día
   plan: 20,          // armar tu plan semanal (una vez por semana)
   challenge: 10,     // completar el reto del día
+  water: 2,          // cada vaso de agua (una vez por vaso al día)
+  waterGoal: 4,      // bono al llegar a la meta de agua
+  extra: 5,          // snack extra para llegar a tu meta de calorías
 };
 
 // ── Reto del día ──
@@ -72,12 +75,21 @@ export function waterToday(state = getState()) {
 
 // Toca un vaso: llena hasta ese vaso (o lo vacía si ya era el último lleno)
 export function setWater(n) {
-  const res = { challenge: false };
+  const res = { challenge: false, xp: 0 };
   update((s) => {
     const t = today();
     s.water = s.water || {};
+    s.waterXp = s.waterXp || {};
     const cur = s.water[t] || 0;
-    s.water[t] = Math.max(0, Math.min(WATER_GOAL, n === cur ? n - 1 : n));
+    const next = Math.max(0, Math.min(WATER_GOAL, n === cur ? n - 1 : n));
+    s.water[t] = next;
+    // XP solo por vasos nuevos del día (quitar y volver a poner no da más XP)
+    const awarded = s.waterXp[t] || 0;
+    if (next > awarded) {
+      res.xp = (next - awarded) * XP.water + (next === WATER_GOAL ? XP.waterGoal : 0);
+      s.waterXp[t] = next;
+      s.xp += res.xp;
+    }
     res.challenge = evalChallenge(s);
   });
   return res;
@@ -171,7 +183,8 @@ export function logMeal(slotId, recipeId) {
     if (existing) return; // ese tiempo ya está registrado hoy
 
     const perfect = recipe ? matchInfo(recipe, s).missing.length === 0 : false;
-    let xp = XP.meal + (perfect ? XP.perfectMatch : 0);
+    const isExtra = String(slotId).startsWith('extra');
+    let xp = isExtra ? XP.extra : XP.meal + (perfect ? XP.perfectMatch : 0);
     const entry = {
       slot: slotId, recipeId, xp, perfect, ai: !!recipe?.ai, at: Date.now(),
       // copia de nutrientes para el seguimiento (aunque la receta de IA no se guarde)
