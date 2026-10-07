@@ -66,11 +66,25 @@ Al terminar vas a tener:
    | **Secret** | `GEMINI_API_KEY` | tu key `AIza…` |
    | Text | `ALLOWED_ORIGINS` | `https://TU_USUARIO.github.io,http://localhost:8080` |
    | Text (opcional) | `GEMINI_MODEL` | déjalo vacío al inicio |
+   | **Secret** | `ADMIN_TOKEN` | una contraseña larga inventada por ti (ej. 20 letras y números). Sirve para ver las sugerencias de dietas |
 
    Guarda y, si te lo pide, da clic en **Deploy** otra vez.
 5. Copia la URL del Worker, que aparece arriba: `https://alacena-ia.TU-CUENTA.workers.dev`.
 
 **Cómo comprobarlo:** abre esa URL en el navegador. Debe decir **"Origen no permitido"**. Eso significa que está vivo y que rechaza a quien no sea tu app.
+
+### 3b · Guardar las dietas que sugieren los usuarios (5 min)
+
+1. En Cloudflare ve a **Storage & Databases → KV** (o **Workers & Pages → KV**) → **Create a namespace**. Nombre: `alacena-sugerencias` → **Add**.
+2. Regresa a tu Worker → **Settings → Bindings → Add → KV namespace**.
+   - Variable name: `SUGGESTIONS` (exactamente así)
+   - KV namespace: `alacena-sugerencias`
+   - **Save / Deploy**.
+3. Para ver las sugerencias abre en tu navegador:
+   `https://alacena-ia.TU-CUENTA.workers.dev/sugerencias?token=TU_ADMIN_TOKEN`
+   Verás una tabla con fecha, dieta sugerida, motivo y cuáles son las más pedidas. Guarda ese link en tus favoritos y no lo compartas.
+
+> Si no haces este paso, la app guarda las sugerencias en el teléfono del usuario y las reenvía sola cuando el KV ya esté conectado.
 
 ---
 
@@ -149,6 +163,9 @@ Hazlas en tu teléfono, con el link de GitHub Pages.
 - [ ] **Protector de racha**: mañana no registres nada; pasado mañana abre la app y la racha debe seguir, con un escudo en el calendario.
 - [ ] Perfil → **Simular cuenta gratuita**: revisar que los módulos Pro se vean con candado.
 - [ ] Modo avión: la app debe abrir y el recetario funcionar. La IA debe dar un mensaje claro.
+- [ ] **Inicio**: tocar a Valita (cambia el consejo), llenar los 8 vasos de agua y cumplir el reto del día.
+- [ ] **Dieta propia**: crear una en Perfil → Mis dietas propias y revisar que las recetas respeten tus reglas. Con "Simular cuenta gratuita" solo deja 3 restricciones y 1 dieta.
+- [ ] **Sugerir una dieta** desde Perfil y verla en tu link de `/sugerencias`.
 
 ---
 

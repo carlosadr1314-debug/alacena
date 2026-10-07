@@ -11,6 +11,10 @@
 //   GEMINI_API_KEY   (Secret)  Tu key de https://aistudio.google.com/apikey
 //   ALLOWED_ORIGINS  (Text)    https://TU_USUARIO.github.io,http://localhost:8080
 //   GEMINI_MODEL     (Text, opcional) p. ej. gemini-flash-latest
+//   ADMIN_TOKEN      (Secret)  Contraseña larga para ver las sugerencias de dietas
+// Binding opcional:
+//   SUGGESTIONS      (KV namespace) donde se guardan las dietas que sugieren los usuarios
+//   Para verlas: https://TU-WORKER.workers.dev/sugerencias?token=TU_ADMIN_TOKEN
 //
 // Más adelante, aquí mismo se validará si el usuario tiene plan Pro.
 // ─────────────────────────────────────────────────────────────
@@ -113,8 +117,53 @@ async function callGemini(env, prompt, image = null) {
   return { error: 'MODEL_NOT_FOUND', status: 502 };
 }
 
+const escHtml = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Página privada para revisar las sugerencias (solo con ADMIN_TOKEN)
+async function listSuggestions(request, env) {
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token') || '';
+  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response('No autorizado', { status: 401 });
+  if (!env.SUGGESTIONS) return new Response('Falta conectar el KV "SUGGESTIONS" al Worker.', { status: 500 });
+  const items = [];
+  let cursor;
+  do {
+    const page = await env.SUGGESTIONS.list({ prefix: 'sug:', cursor, limit: 1000 });
+    for (const k of page.keys) {
+      const v = await env.SUGGESTIONS.get(k.name, 'json');
+      if (v) items.push(v);
+    }
+    cursor = page.list_complete ? null : page.cursor;
+  } while (cursor && items.length < 2000);
+  items.sort((a, b) => String(b.receivedAt).localeCompare(String(a.receivedAt)));
+  if (url.searchParams.get('format') === 'json') {
+    return new Response(JSON.stringify(items, null, 2), { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+  }
+  // Agrupa por nombre para ver cuáles piden más
+  const counts = {};
+  for (const it of items) {
+    const k = String(it.name || '').trim().toLowerCase();
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sugerencias de dietas</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:#FFFDF7;color:#22302A}h1{font-size:22px}
+table{border-collapse:collapse;width:100%;font-size:14px;background:#fff}th,td{border:1px solid #E8E2D3;padding:8px;text-align:left;vertical-align:top}
+th{background:#F6F2E8}.wrap{overflow-x:auto}.chip{display:inline-block;background:#FFF1E6;color:#B03A06;border-radius:99px;padding:2px 10px;margin:2px;font-weight:700}</style>
+<h1>Sugerencias de dietas (${items.length})</h1>
+<p>Más pedidas: ${top.map(([n, c]) => `<span class="chip">${escHtml(n)} · ${c}</span>`).join(' ') || '—'}</p>
+<div class="wrap"><table><tr><th>Fecha</th><th>Dieta sugerida</th><th>¿Por qué?</th><th>Fuente</th><th>Dieta actual</th></tr>
+${items.map((i) => `<tr><td>${escHtml(String(i.receivedAt).slice(0, 16).replace('T', ' '))}</td><td><b>${escHtml(i.name)}</b></td><td>${escHtml(i.why)}</td><td>${escHtml(i.source)}</td><td>${escHtml(i.currentDiet)}</td></tr>`).join('')}
+</table></div><p><a href="?token=${encodeURIComponent(token)}&format=json">Descargar JSON</a></p>`;
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
 export default {
   async fetch(request, env) {
+    if (request.method === 'GET' && new URL(request.url).pathname.replace(/\/$/, '') === '/sugerencias') {
+      return listSuggestions(request, env);
+    }
     const origin = request.headers.get('Origin') || '';
     const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const okOrigin = allowed.includes(origin);
@@ -139,6 +188,22 @@ export default {
 
     const ip = request.headers.get('CF-Connecting-IP') || 'local';
     if (!(await underLimit(env, ip))) return json({ error: 'RATE_LIMIT' }, 429, origin);
+
+    if (body.action === 'suggest') {
+      if (!env.SUGGESTIONS) return json({ error: 'NO_STORAGE' }, 500, origin);
+      const sg = body.suggestion || {};
+      const item = {
+        name: clip(sg.name, 60),
+        why: clip(sg.why, 400),
+        source: clip(sg.source, 200),
+        currentDiet: clip(sg.currentDiet, 60),
+        clientId: clip(sg.id, 40),
+        receivedAt: new Date().toISOString(),
+      };
+      if (!item.name) return json({ error: 'BAD_REQUEST' }, 400, origin);
+      await env.SUGGESTIONS.put(`sug:${item.receivedAt}:${crypto.randomUUID().slice(0, 8)}`, JSON.stringify(item));
+      return json({ ok: true }, 200, origin);
+    }
 
     let result;
     if (body.action === 'recipes') {

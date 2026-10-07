@@ -1,7 +1,8 @@
 // Gamificación: XP, niveles, racha diaria y logros.
 
 import { getState, update, today, addDays } from './store.js';
-import { getSlots, findRecipe, matchInfo } from './engine.js';
+import { getSlots, findRecipe, matchInfo, rankRecipes } from './engine.js';
+import { ING } from './data/ingredients.js';
 import { canUse } from './premium.js';
 import { getDiet } from './data/diets.js';
 
@@ -10,7 +11,77 @@ export const XP = {
   perfectMatch: 5,   // bono si la cocinaste solo con lo que tenías
   perfectDay: 25,    // completar todos los tiempos de comida del día
   plan: 20,          // armar tu plan semanal (una vez por semana)
+  challenge: 10,     // completar el reto del día
 };
+
+// ── Reto del día ──
+export const WATER_GOAL = 8;
+
+function hash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+export function todayChallenge(state = getState()) {
+  const t = today();
+  const slots = getSlots(state.profile.mealsPerDay);
+  const types = ['use_ing', 'perfect', 'two', 'new', 'water'];
+  if (slots.some((x) => x.id === 'desayuno')) types.push('early');
+  let type = types[hash(t + state.profile.name) % types.length];
+  let ing = null;
+  if (type === 'use_ing') {
+    // un ingrediente de tu despensa que aparezca en recetas compatibles
+    const usable = state.pantry.filter((id) => !ING[id]?.flags.has('staple') &&
+      rankRecipes({}).some((x) => x.recipe.ingredients.some((i) => i.id === id)));
+    if (usable.length) ing = usable[hash(t) % usable.length];
+    else type = 'two';
+  }
+  const text = {
+    use_ing: `Cocina algo con ${ING[ing]?.name.toLowerCase()}`,
+    perfect: 'Cocina una receta solo con lo que ya tienes',
+    two: 'Registra 2 comidas hoy',
+    new: 'Prueba una receta que nunca has cocinado',
+    water: `Toma ${WATER_GOAL} vasos de agua`,
+    early: 'Registra tu desayuno antes de las 11:00',
+  }[type];
+  return { type, ing, text, done: !!state.challenges?.[t] };
+}
+
+// Revisa (dentro de update) si con esta acción se cumplió el reto. Devuelve true si se completó ahora.
+function evalChallenge(s, ctx = {}) {
+  const t = today();
+  s.challenges = s.challenges || {};
+  if (s.challenges[t]) return false;
+  const ch = todayChallenge(s);
+  const logs = s.log[t] || [];
+  let ok = false;
+  if (ch.type === 'use_ing') ok = !!ctx.recipe?.ingredients.some((i) => i.id === ch.ing);
+  else if (ch.type === 'perfect') ok = !!ctx.perfect;
+  else if (ch.type === 'two') ok = logs.length >= 2;
+  else if (ch.type === 'new') ok = !!ctx.recipe && !Object.entries(s.log).some(([d, l]) => d !== t && l.some((x) => x.recipeId === ctx.recipe.id));
+  else if (ch.type === 'water') ok = (s.water?.[t] || 0) >= WATER_GOAL;
+  else if (ch.type === 'early') ok = ctx.slot === 'desayuno' && new Date().getHours() < 11;
+  if (ok) { s.challenges[t] = true; s.xp += XP.challenge; }
+  return ok;
+}
+
+export function waterToday(state = getState()) {
+  return state.water?.[today()] || 0;
+}
+
+// Toca un vaso: llena hasta ese vaso (o lo vacía si ya era el último lleno)
+export function setWater(n) {
+  const res = { challenge: false };
+  update((s) => {
+    const t = today();
+    s.water = s.water || {};
+    const cur = s.water[t] || 0;
+    s.water[t] = Math.max(0, Math.min(WATER_GOAL, n === cur ? n - 1 : n));
+    res.challenge = evalChallenge(s);
+  });
+  return res;
+}
 
 // Nivel n requiere 25·n·(n−1) XP  → 0, 50, 150, 300, 500, 750…
 export function levelFromXp(xp) {
@@ -120,6 +191,7 @@ export function logMeal(slotId, recipeId) {
     // Día perfecto
     const slots = getSlots(s.profile.mealsPerDay).map((x) => x.id);
     const doneSlots = new Set(s.log[t].map((l) => l.slot));
+    if (evalChallenge(s, { recipe, perfect, slot: slotId })) result.challenge = todayChallenge(s).text;
     if (slots.every((id) => doneSlots.has(id))) {
       xp += XP.perfectDay;
       result.perfectDay = true;
@@ -128,7 +200,7 @@ export function logMeal(slotId, recipeId) {
 
     entry.xp = xp;
     s.xp += xp;
-    result.xp = xp;
+    result.xp = xp + (result.challenge ? XP.challenge : 0);
     checkAchievements(s, result.unlocked);
     const after = levelFromXp(s.xp).level;
     if (after > before) result.levelUp = after;

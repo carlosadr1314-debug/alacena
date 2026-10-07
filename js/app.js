@@ -2,7 +2,7 @@
 
 import { APP_NAME } from './config.js';
 import { getState, update, subscribe, resetState, today, addDays, parseDate } from './store.js';
-import { DIETS, EVIDENCE_LABEL, getDiet } from './data/diets.js';
+import { DIETS, EVIDENCE_LABEL, getDiet, CUSTOM_RULES, CUSTOM_LIMITS, customDiets } from './data/diets.js';
 import { INGREDIENTS, ING, CATEGORIES, LOCATIONS, QUICK_PICKS, norm } from './data/ingredients.js';
 import {
   getSlots, rankRecipes, findRecipe, matchInfo, hasIngredient, ingredientName, generatePlan,
@@ -12,8 +12,9 @@ import {
   logMeal, undoMeal, todayLog, currentStreak, streakDoneToday, levelFromXp, levelTitle,
   ACHIEVEMENTS, refreshAchievements, cookedCount, lastWeek, XP,
   applyStreakFreezes, macroTargets, dayTotals, weekTotals, FREEZES_PER_MONTH,
+  todayChallenge, waterToday, setWater, WATER_GOAL,
 } from './game.js';
-import { aiConfigured, generateRecipes, aiErrorMessage, pingAI, aiUsesLeft, compressImage, scanPantry } from './ai.js';
+import { aiConfigured, generateRecipes, aiErrorMessage, pingAI, aiUsesLeft, compressImage, scanPantry, sendSuggestion } from './ai.js';
 import { canUse, isProFeature, isOpenBeta, PRO_FEATURES } from './premium.js';
 import { PREMIUM } from './config.js';
 import { icon, mascot, MEAL_ICON } from './icons.js';
@@ -25,12 +26,15 @@ const ui = {
   tab: 'hoy',
   ob: { step: 0, name: '', diet: null, vegan: false, mealsPerDay: 3, fastStart: '12:00', fastHours: 8, pantry: new Set(), dietOpen: null, nameError: '' },
   recipes: { meal: null, onlyReady: false, query: '' },
-  pantry: { loc: 'all', query: '' },
+  pantry: { loc: 'all', query: '', view: 'tengo' },
   planDay: null,
   planView: 'dias',
   ai: { loading: false, error: '', results: [], controller: null, extra: '' },
   scan: { loading: false, error: '', items: [], picked: new Set(), preview: '', controller: null },
   famForm: { name: '', diet: 'mediterranea', vegan: false, error: '' },
+  dietForm: null,
+  sugForm: { name: '', why: '', source: '', error: '', sending: false },
+  tip: null,
   installEvt: null,
 };
 
@@ -66,7 +70,7 @@ function greeting() {
 
 function dietIconText(d) {
   const map = { mediterranea: 'Me', dash: 'DA', keto: 'K', vegetariana: 'Ve', flexitariana: 'Fx', nordica: 'Nó', portfolio: 'Po', mind: 'Mi', bajacal: 'Bc', fodmap: 'Fo', ayuno: 'Ay', biencomer: 'BC' };
-  return map[d.id] || d.name[0];
+  return map[d.id] || (d.name || '?').trim().slice(0, 2);
 }
 
 // ═════════════════════════ RENDER PRINCIPAL ═════════════════════════
@@ -93,6 +97,8 @@ function rerenderMain() {
   main.innerHTML = screen();
   const tb = document.querySelector('.topbar');
   if (tb) tb.outerHTML = topbar();
+  const nav = document.querySelector('.bottomnav');
+  if (nav) nav.outerHTML = bottomnav();
 }
 
 function topbar() {
@@ -120,7 +126,10 @@ function bottomnav() {
     ['perfil', 'user', 'Perfil'],
   ];
   return `<nav class="bottomnav" aria-label="Navegación principal">${items
-    .map(([id, ic, label]) => `<button class="navbtn" data-act="go" data-tab="${id}" ${ui.tab === id ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></button>`)
+    .map(([id, ic, label]) => {
+      const n = id === 'despensa' ? S().shopping.filter((x) => !x.done).length : 0;
+      return `<button class="navbtn" data-act="go" data-tab="${id}" ${ui.tab === id ? 'aria-current="page"' : ''} ${n ? `aria-label="${label}, ${n} por comprar"` : ''}><span class="nav-ic">${icon(ic)}${n ? `<span class="nav-badge num" aria-hidden="true">${n > 9 ? '9+' : n}</span>` : ''}</span><span>${label}</span></button>`;
+    })
     .join('')}</nav>`;
 }
 
@@ -138,7 +147,7 @@ function renderOnboarding() {
   if (o.step === 0) {
     body = `<div class="ob-hero">
       ${mascot('cheer', 'lg')}
-      <h1>¡Hola! Soy Brote</h1>
+      <h1>¡Hola! Soy Valita</h1>
       <p class="muted" style="max-width:320px">Te ayudo a seguir tu dieta cocinando con lo que <b>ya tienes</b> en tu cocina. Recetas, plan semanal y rachas para que no la sueltes.</p>
     </div>
     <div class="sticky-foot stack-sm">
@@ -158,7 +167,12 @@ function renderOnboarding() {
     body = `${top()}
       <div class="speech">${mascot('think', 'sm')}<div class="bubble">¿Qué dieta quieres seguir, ${esc(o.name)}?</div></div>
       <p class="small muted" style="margin:14px 0 10px">Todas tienen respaldo científico o de autoridades de salud. Toca una para ver su evidencia.</p>
-      <div class="stack-sm" role="list">${DIETS.map((d) => dietOption(d, o.diet === d.id)).join('')}</div>
+      <div class="stack-sm" role="list">${[...customDiets(), ...DIETS].map((d) => dietOption(d, o.diet === d.id)).join('')}</div>
+      <button class="card pressable row" data-act="diet-new" style="gap:14px;margin-top:8px">
+        <span class="diet-icon" style="background:var(--ink)" aria-hidden="true">${icon('plus')}</span>
+        <span style="flex:1"><b>Crear mi propia dieta</b><br><span class="small muted">Elige lo que no comes y te armo recetas a tu medida.</span></span>${icon('chevron')}
+      </button>
+      <p class="center small" style="margin-top:12px">¿No ves tu dieta? <button class="linkbtn" data-act="suggest-open">Sugiérela</button></p>
       <div class="sticky-foot"><button class="btn btn-block" data-act="ob-next" ${o.diet ? '' : 'disabled'}>Continuar</button></div>`;
   } else if (o.step === 3) {
     const diet = getDiet(o.diet);
@@ -252,14 +266,15 @@ function todayScreen() {
   const planDay = plan?.days.find((d) => d.date === today());
 
   return `<div class="stack">
-    <div class="speech">${mascot(allDone ? 'cheer' : 'happy')}<div class="bubble">${msg}</div></div>
+    <div class="speech">
+      <button class="alita-btn" data-act="alita" aria-label="Toca a Valita para un consejo">${mascot(allDone ? 'cheer' : 'happy')}</button>
+      <div class="bubble" id="alita-bubble" aria-live="polite">${ui.tip ? esc(ui.tip) : msg}<span class="bubble-hint">Tócame para un consejo</span></div>
+    </div>
 
     <div class="card">
       <div class="row between" style="margin-bottom:10px"><b>Meta de hoy</b><span class="small muted num">${doneCount} de ${slots.length} comidas</span></div>
       <div class="progress" role="progressbar" aria-label="Comidas de hoy" aria-valuemin="0" aria-valuemax="${slots.length}" aria-valuenow="${doneCount}"><span style="width:${(doneCount / slots.length) * 100}%"></span></div>
     </div>
-
-    ${nutritionCard()}
     ${diet.fasting ? fastingCard() : ''}
 
     <section aria-label="Tu ruta de hoy">
@@ -282,6 +297,11 @@ function todayScreen() {
       </div>
     </section>
 
+    ${challengeCard()}
+    ${weekStrip()}
+    ${waterCard()}
+    ${nutritionCard()}
+
     ${pantryCount < 6 ? `<button class="card pressable brand row" data-act="go" data-tab="despensa" style="gap:14px">
         <span style="color:var(--brand-ink)">${icon('pantry', 'icon-lg')}</span>
         <span style="flex:1"><b>Llena tu despensa</b><br><span class="small muted">Con más ingredientes te doy mejores recetas. Tienes ${pantryCount}.</span></span>
@@ -293,6 +313,61 @@ function todayScreen() {
         <span style="flex:1"><b>Arma tu plan de la semana</b><br><span class="small muted">7 días de recetas con lo que tienes y tu lista del súper. +${XP.plan} XP</span></span>
         ${icon('chevron')}
       </button>` : ''}
+  </div>`;
+}
+
+// ── Inicio interactivo ──
+const TIPS = [
+  'Tomar agua antes de comer ayuda a reconocer si de verdad tienes hambre.',
+  'Llena la mitad de tu plato con verduras: es la regla más fácil de recordar.',
+  'Cocinar en casa te deja controlar la sal, el azúcar y el aceite.',
+  '¿Te sobró comida? Guárdala en el refri antes de 2 horas.',
+  'Las legumbres (frijol, lenteja, garbanzo) son proteína barata y con mucha fibra.',
+  'Planear tu semana evita que compres de más… y que tires comida.',
+  'Puedes escanear tu refri con una foto desde Despensa.',
+  'Si un ingrediente te falta, toca “Lo tengo” o mándalo al carrito.',
+  'Una racha se construye con días normales, no con días perfectos.',
+  'Masticar despacio ayuda a sentirte satisfecho con menos.',
+  'Las frutas enteras llenan más que los jugos.',
+  'Dormir bien también influye en el hambre del día siguiente.',
+];
+
+function alitaTip() {
+  const diet = getDiet(S().profile.diet);
+  const pool = [...TIPS, `Tu dieta ${diet.name}: ${diet.short}`, diet.proof && !diet.custom ? `Dato: ${diet.proof}` : null].filter(Boolean);
+  let t;
+  do { t = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && t === ui.tip);
+  return t;
+}
+
+function weekStrip() {
+  const week = lastWeek();
+  const streak = currentStreak();
+  return `<div class="card week-strip">
+    <div class="row between"><b class="row" style="gap:6px"><span style="color:var(--flame)">${icon('flame', 'icon-sm')}</span>${streak ? `${streak} ${streak === 1 ? 'día' : 'días'} de racha` : 'Empieza tu racha hoy'}</b>
+      <span class="small muted">${streakDoneToday() ? 'Hoy ya cuenta' : 'Registra 1 comida'}</span></div>
+    <div class="week-dots" style="margin-top:10px">${week.map((d) => `<div><i class="${d.done ? 'on' : d.frozen ? 'frz' : ''}" aria-hidden="true">${d.done ? icon('flame', 'icon-sm') : d.frozen ? icon('shield', 'icon-sm') : ''}</i>${d.date === today() ? 'Hoy' : DAY_SHORT[parseDate(d.date).getDay()][0]}<span class="sr-only">${d.done ? 'cumplido' : d.frozen ? 'protegido' : 'sin registro'}</span></div>`).join('')}</div>
+  </div>`;
+}
+
+function challengeCard() {
+  const ch = todayChallenge();
+  return `<div class="card challenge ${ch.done ? 'done' : ''} row" style="gap:14px">
+    <span class="challenge-ic">${icon(ch.done ? 'check' : 'trophy')}</span>
+    <span style="flex:1"><span class="slot-label">Reto del día</span><br><b>${esc(ch.text)}</b><br>
+      <span class="small ${ch.done ? '' : 'muted'}">${ch.done ? '¡Completado! +10 XP' : 'Recompensa: +10 XP'}</span></span>
+  </div>`;
+}
+
+function waterCard() {
+  const n = waterToday();
+  return `<div class="card">
+    <div class="row between"><b>Agua de hoy</b><span class="small muted num">${n} de ${WATER_GOAL} vasos</span></div>
+    <div class="glasses" role="group" aria-label="Vasos de agua">
+      ${Array.from({ length: WATER_GOAL }, (_, i) => `<button class="glass ${i < n ? 'full' : ''}" data-act="water" data-n="${i + 1}" aria-label="Vaso ${i + 1}${i < n ? ', tomado' : ''}" aria-pressed="${i < n}">
+        <svg viewBox="0 0 24 32" aria-hidden="true"><path class="glass-water" d="M5.6 ${i < n ? 8 : 30} L18.4 ${i < n ? 8 : 30} L17 30 H7 Z"/><path class="glass-shape" d="M3 3h18l-2.6 26a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z"/></svg>
+      </button>`).join('')}
+    </div>
   </div>`;
 }
 
@@ -391,9 +466,22 @@ function pantryScreen() {
   const custom = loc === 'all' || loc === 'otros' ? s.customPantry : [];
   const total = s.pantry.length + s.customPantry.length;
   const quick = QUICK_PICKS.filter((id) => !s.pantry.includes(id)).slice(0, 12);
+  const pendingBuy = s.shopping.filter((x) => !x.done).length;
+  const seg = `<div class="segmented" role="group" aria-label="Vista de despensa">
+      <button data-act="pantry-view" data-v="tengo" aria-pressed="${ui.pantry.view === 'tengo'}">Lo que tengo (${total})</button>
+      <button data-act="pantry-view" data-v="comprar" aria-pressed="${ui.pantry.view === 'comprar'}">Por comprar (${pendingBuy})</button>
+    </div>`;
+  if (ui.pantry.view === 'comprar') {
+    return `<div class="stack">
+      <div class="row between"><h1>Mi despensa</h1><span class="badge num">${total} ingredientes</span></div>
+      ${seg}
+      ${shoppingView('despensa')}
+    </div>`;
+  }
 
   return `<div class="stack">
     <div class="row between"><h1>Mi despensa</h1><span class="badge num">${total} ingredientes</span></div>
+    ${seg}
 
     <button class="card pressable pro-card row" data-act="scan-open" style="gap:14px">
       <span class="pro-icon">${icon(canUse('scan') ? 'camera' : 'lock')}</span>
@@ -542,6 +630,7 @@ function openRecipe(id, slotId = null) {
 
     <section>
       <div class="row between"><h3>Ingredientes</h3><span class="small muted num">Tienes ${m.have} de ${m.total}</span></div>
+      ${m.missing.length ? `<p class="tiny muted" style="margin-top:4px">¿Te falta algo? <b>Lo tengo</b> lo agrega a tu despensa; el carrito lo manda a <b>Por comprar</b>.</p>` : ''}
       <ul class="ing-list">
         ${r.ingredients.map((i) => {
           const have = hasIngredient(i);
@@ -549,9 +638,12 @@ function openRecipe(id, slotId = null) {
           return `<li>
             <span class="ing-check ${have ? 'have' : 'miss'}">${icon(have ? 'check' : 'cart', 'icon-sm')}</span>
             <span class="ing-name">${esc(ingredientName(i))}<br><span class="ing-qty">${esc(i.qty)}</span></span>
-            ${!have ? (inShop.has(key)
-              ? '<span class="small muted bold">En tu lista</span>'
-              : `<button class="btn btn-ghost btn-sm" data-act="shop-add" data-key="${esc(key)}" data-name="${esc(ingredientName(i))}" data-ing="${ING[i.id] ? i.id : ''}" data-recipe="${r.id}" data-slot="${slotId || ''}">${icon('plus', 'icon-sm')} Lista</button>`) : ''}
+            ${!have ? `<span class="ing-actions">
+              <button class="btn btn-ghost btn-sm" data-act="have-it" data-key="${esc(key)}" data-name="${esc(ingredientName(i))}" data-ing="${ING[i.id] ? i.id : ''}" data-recipe="${r.id}" data-slot="${slotId || ''}" aria-label="Ya tengo ${esc(ingredientName(i))}: agregar a mi despensa">${icon('check', 'icon-sm')} Lo tengo</button>
+              ${inShop.has(key)
+                ? `<span class="in-list" title="Está en Despensa → Por comprar">${icon('cart', 'icon-sm')}<span class="sr-only">Ya está en tu lista por comprar</span></span>`
+                : `<button class="btn btn-ghost btn-icon" data-act="shop-add" data-key="${esc(key)}" data-name="${esc(ingredientName(i))}" data-ing="${ING[i.id] ? i.id : ''}" data-recipe="${r.id}" data-slot="${slotId || ''}" aria-label="Agregar ${esc(ingredientName(i))} a mi lista por comprar">${icon('cart', 'icon-sm')}</button>`}
+            </span>` : ''}
           </li>`;
         }).join('')}
       </ul>
@@ -606,7 +698,7 @@ function renderAISheet() {
       ${familyActive() ? `<div class="notice info">${icon('users')}<span>Modo familiar: las recetas deben servirles a las ${planningProfiles().length} personas.</span></div>` : ''}
       <button class="btn btn-ai btn-block" data-act="ai-generate" ${a.loading || !aiUsesLeft() ? 'disabled' : ''}>${icon('sparkles')} ${a.loading ? 'Creando…' : 'Crear 3 recetas'}</button>
       <p class="tiny muted center">Te quedan ${aiUsesLeft()} usos de IA hoy.</p>
-      ${a.loading ? `<div class="loader" role="status">${mascot('think', 'sm')}<div class="dots"><i></i><i></i><i></i></div><p class="small muted">Brote está pensando recetas con tu despensa…</p><button class="linkbtn" data-act="ai-cancel">Cancelar</button></div>` : ''}
+      ${a.loading ? `<div class="loader" role="status">${mascot('think', 'sm')}<div class="dots"><i></i><i></i><i></i></div><p class="small muted">Valita está pensando recetas con tu despensa…</p><button class="linkbtn" data-act="ai-cancel">Cancelar</button></div>` : ''}
       ${a.error ? `<div class="notice err" role="alert">${icon('alert')}<span>${esc(a.error)}</span></div>` : ''}
       ${a.results.length ? `<div class="stack-sm"><p class="slot-label">Recetas nuevas</p>${a.results.map((r) => recipeCard(r)).join('')}</div>` : ''}
       <p class="tiny muted center">La IA puede equivocarse en cantidades o calorías. Revisa que los ingredientes sean compatibles con tu dieta.</p>
@@ -701,24 +793,28 @@ function dayKcal(day) {
   return Object.values(day.slots).reduce((a, id) => a + (findRecipe(id)?.kcal || 0), 0);
 }
 
-function shoppingView() {
-  const list = S().shopping;
+function shoppingView(context = 'plan') {
+  const s = S();
+  const list = s.shopping;
   const weekOk = canUse('weekShopping');
-  const head = `<div class="row between" style="flex-wrap:wrap;gap:6px"><span class="small muted bold">${weekOk ? 'Lo que te falta para la semana' : 'Lo que te falta para hoy'}</span>${proBadge('weekShopping')}</div>`;
+  const hasPlan = !!s.plan;
+  const head = `<div class="notice info">${icon('info')}<span>Aquí llega lo que mandas con el <b>carrito</b> desde una receta${hasPlan ? ' y lo que le falta a tu plan' : ''}. Cuando lo compres, márcalo y pásalo a <b>Lo que tengo</b>.</span></div>`;
   if (!list.length) {
-    return `${head}<div class="empty card">${mascot('cheer', 'sm')}<p><b>No te falta nada</b><br><span class="muted">Con tu despensa puedes cocinar ${weekOk ? 'todo el plan' : 'el menú de hoy'}.</span></p></div>${weekOk ? '' : upsellCard('weekShopping')}`;
+    return `${head}<div class="empty card">${mascot('cheer', 'sm')}<p><b>Tu lista está vacía</b><br><span class="muted">${hasPlan ? `Con tu despensa puedes cocinar ${weekOk ? 'todo el plan' : 'el menú de hoy'}.` : 'Abre una receta y toca el carrito en lo que te falte.'}</span></p></div>${hasPlan && !weekOk ? upsellCard('weekShopping') : ''}`;
   }
   const done = list.filter((x) => x.done).length;
   return `${head}<div class="card">
       ${list.map((x, i) => `<div class="shop-item ${x.done ? 'done' : ''}">
         <span class="checkbox"><input type="checkbox" id="shop-${i}" data-act-change="shop-toggle" data-key="${esc(x.key)}" ${x.done ? 'checked' : ''}><span></span></span>
-        <label for="shop-${i}" class="ing-name">${esc(x.name)}</label>
+        <label for="shop-${i}" class="ing-name">${esc(x.name)}${x.manual ? '' : ' <span class="small muted">· del plan</span>'}</label>
         ${x.count > 1 ? `<span class="small muted num">${x.count} recetas</span>` : ''}
+        <button class="btn btn-ghost btn-icon" data-act="shop-remove" data-key="${esc(x.key)}" aria-label="Quitar ${esc(x.name)} de la lista">${icon('x', 'icon-sm')}</button>
       </div>`).join('')}
     </div>
-    <button class="btn btn-ok btn-block" data-act="shop-to-pantry" ${done ? '' : 'disabled'}>${icon('pantry')} Pasar comprados a mi despensa${done ? ` (${done})` : ''}</button>
-    <button class="btn btn-ghost btn-block" data-act="shop-refresh">${icon('refresh', 'icon-sm')} Recalcular con mi plan</button>
-    ${weekOk ? '' : upsellCard('weekShopping')}`;
+    <button class="btn btn-ok btn-block" data-act="shop-to-pantry" ${done ? '' : 'disabled'}>${icon('check')} Ya lo compré${done ? ` (${done})` : ''}</button>
+    ${hasPlan ? `<button class="btn btn-ghost btn-block" data-act="shop-refresh">${icon('refresh', 'icon-sm')} Recalcular con mi plan</button>` : ''}
+    ${list.some((x) => x.done) ? '' : '<p class="tiny muted center">Marca lo que compraste y toca “Ya lo compré”: pasa a Lo que tengo.</p>'}
+    ${hasPlan && !weekOk ? upsellCard('weekShopping') : ''}`;
 }
 
 // Tarjeta para invitar a Pro (solo aparece si el módulo está bloqueado)
@@ -737,7 +833,7 @@ function openPaywall(feature) {
     <div class="pro-hero">
       ${mascot('cheer')}
       <div><span class="badge pro">PRO</span><h2 style="margin-top:6px">Cocina sin límites</h2>
-      <p class="small" style="margin-top:4px">${focus ? `${esc(focus.name)} es parte de Pro.` : 'Desbloquea todo lo que Brote puede hacer por ti.'}</p></div>
+      <p class="small" style="margin-top:4px">${focus ? `${esc(focus.name)} es parte de Pro.` : 'Desbloquea todo lo que Valita puede hacer por ti.'}</p></div>
     </div>
     <ul class="pro-list">
       ${Object.entries(PRO_FEATURES).map(([id, f]) => `<li class="${id === feature ? 'hl' : ''}"><span class="pro-icon">${icon(f.icon)}</span><span><b>${f.name}</b><br><span class="small muted">${f.desc}</span></span></li>`).join('')}
@@ -807,8 +903,12 @@ function profileScreen() {
       <p class="small">${esc(diet.short)}</p>
       <p class="small muted"><b>Respaldo:</b> ${esc(diet.proof)}</p>
       ${diet.warning ? `<div class="notice warn">${icon('alert')}<span>${esc(diet.warning)}</span></div>` : ''}
+      ${diet.custom ? `<button class="btn btn-ghost btn-block" data-act="diet-edit" data-id="${diet.id}">${icon('sliders', 'icon-sm')} Editar mi dieta</button>` : ''}
       <button class="btn btn-ghost btn-block" data-act="change-diet">Cambiar de dieta</button>
     </div>
+
+    ${customDietsSection()}
+    ${suggestSection()}
 
     <div class="section-title"><h2>Ajustes</h2></div>
     <div class="card stack">
@@ -891,7 +991,7 @@ function familySection() {
         <div class="field"><label for="fam-name" class="small">Nombre</label><input id="fam-name" class="input" maxlength="24" value="${esc(f.name)}" ${f.error ? 'aria-invalid="true" aria-describedby="fam-err"' : ''}>
           ${f.error ? `<p class="field-error" id="fam-err">${f.error}</p>` : ''}</div>
         <div class="field"><label for="fam-diet" class="small">Su dieta</label>
-          <select id="fam-diet" class="input">${DIETS.map((d) => `<option value="${d.id}" ${f.diet === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
+          <select id="fam-diet" class="input">${[...DIETS, ...customDiets()].map((d) => `<option value="${d.id}" ${f.diet === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
         <label class="row small bold" style="min-height:44px"><span class="checkbox"><input type="checkbox" id="fam-vegan" ${f.vegan ? 'checked' : ''}><span></span></span> Es vegano (solo aplica a Vegetariana)</label>
         <button class="btn btn-ghost btn-block" data-act="fam-add">${icon('plus', 'icon-sm')} Agregar</button>
       </div>` : ''}
@@ -916,7 +1016,7 @@ function renderScanSheet() {
     body = `<div class="empty">${mascot('sleepy')}<p><b>El escaneo está por llegar</b><br><span class="muted">Estamos terminando de conectar la IA.</span></p></div>`;
   } else if (sc.loading) {
     body = `<div class="stack">${sc.preview ? `<img class="scan-preview" src="${sc.preview}" alt="Tu foto">` : ''}
-      <div class="loader" role="status">${mascot('think', 'sm')}<div class="dots"><i></i><i></i><i></i></div><p class="small muted">Brote está viendo tu foto…</p><button class="linkbtn" data-act="scan-cancel">Cancelar</button></div></div>`;
+      <div class="loader" role="status">${mascot('think', 'sm')}<div class="dots"><i></i><i></i><i></i></div><p class="small muted">Valita está viendo tu foto…</p><button class="linkbtn" data-act="scan-cancel">Cancelar</button></div></div>`;
   } else if (sc.items.length) {
     const s = S();
     body = `<div class="stack">
@@ -964,6 +1064,141 @@ async function runScan(file) {
     sc.loading = false;
     if (document.querySelector('.sheet')) renderScanSheet();
   }
+}
+
+// ═════════════════════════ DIETAS PROPIAS ═════════════════════════
+function dietLimits() {
+  return canUse('customDiet') ? CUSTOM_LIMITS.pro : CUSTOM_LIMITS.free;
+}
+
+function customDietsSection() {
+  const s = S();
+  const lim = dietLimits();
+  const list = s.customDiets;
+  return `<div class="section-title"><h2>Mis dietas propias</h2>${proBadge('customDiet')}</div>
+    <div class="card stack-sm">
+      ${list.length ? `<ul class="fam-list">${list.map((c) => {
+        const d = getDiet(c.id);
+        const active = s.profile.diet === c.id;
+        return `<li><span class="diet-dot" style="background:${d.color}"></span>
+          <span style="flex:1;min-width:0"><b>${esc(c.name)}</b>${active ? ' <span class="badge alta">En uso</span>' : ''}<br><span class="small muted">${esc(d.short)}</span></span>
+          ${active ? '' : `<button class="btn btn-ghost btn-sm" data-act="diet-use" data-id="${c.id}">Usar</button>`}
+          <button class="btn btn-ghost btn-icon" data-act="diet-edit" data-id="${c.id}" aria-label="Editar ${esc(c.name)}">${icon('sliders', 'icon-sm')}</button></li>`;
+      }).join('')}</ul>` : '<p class="small muted">Crea una dieta con tus propias reglas: lo que no comes, ingredientes que no te gustan y tu límite de calorías.</p>'}
+      ${list.length < lim.diets
+        ? `<button class="btn btn-ghost btn-block" data-act="diet-new">${icon('plus', 'icon-sm')} Crear dieta propia</button>`
+        : `<button class="card pressable pro-card row" data-act="paywall" data-feature="customDiet" style="gap:12px"><span class="pro-icon sm">${icon('lock', 'icon-sm')}</span><span class="small" style="flex:1">Con Pro puedes tener hasta ${CUSTOM_LIMITS.pro.diets} dietas propias.</span>${icon('chevron')}</button>`}
+      <p class="tiny muted">${canUse('customDiet') ? `Pro: hasta ${CUSTOM_LIMITS.pro.diets} dietas, todas las restricciones, ingredientes a evitar y calorías por comida.` : `Gratis: ${CUSTOM_LIMITS.free.diets} dieta propia con hasta ${CUSTOM_LIMITS.free.rules} restricciones.`}</p>
+    </div>`;
+}
+
+function openDietEditor(id = null) {
+  const c = id ? S().customDiets.find((x) => x.id === id) : null;
+  ui.dietForm = c
+    ? { id: c.id, name: c.name, exclude: [...c.exclude], avoidIngs: [...(c.avoidIngs || [])], kcalMax: c.kcalMax ? { ...c.kcalMax } : { desayuno: '', comida: '', cena: '', snack: '' }, q: '', error: '' }
+    : { id: null, name: '', exclude: [], avoidIngs: [], kcalMax: { desayuno: '', comida: '', cena: '', snack: '' }, q: '', error: '' };
+  renderDietEditor();
+}
+
+function renderDietEditor() {
+  const f = ui.dietForm;
+  const lim = dietLimits();
+  const pro = canUse('customDiet');
+  const atRuleLimit = f.exclude.length >= lim.rules;
+  const q = norm(f.q || '');
+  const sugg = q ? INGREDIENTS.filter((i) => !i.flags.has('staple') && norm(i.name).includes(q) && !f.avoidIngs.includes(i.id)).slice(0, 5) : [];
+  const body = `<div class="stack">
+    <div class="field">
+      <label for="cd-name">Nombre de tu dieta</label>
+      <input id="cd-name" class="input" maxlength="30" placeholder="Ej. Mi dieta sin gluten" value="${esc(f.name)}" ${f.error ? 'aria-invalid="true" aria-describedby="cd-err"' : ''}>
+      ${f.error ? `<p class="field-error" id="cd-err">${esc(f.error)}</p>` : ''}
+    </div>
+    <div>
+      <p class="label">¿Qué no comes? <span class="small muted num">(${f.exclude.length}${pro ? '' : ` de ${lim.rules}`})</span></p>
+      <div class="chips">${CUSTOM_RULES.map((r) => {
+        const on = f.exclude.includes(r.flag);
+        return `<button class="chip ok-on" data-act="cd-rule" data-flag="${r.flag}" aria-pressed="${on}" ${!on && atRuleLimit ? 'disabled aria-disabled="true"' : ''}>${on ? icon('check', 'icon-sm') : ''}${r.label}</button>`;
+      }).join('')}</div>
+      ${!pro && atRuleLimit ? `<p class="field-help">Llegaste al límite gratuito. <button class="linkbtn" data-act="paywall" data-feature="customDiet">Más con Pro</button></p>` : ''}
+    </div>
+
+    <div class="${pro ? '' : 'locked-block'}">
+      <p class="label row" style="gap:8px">Ingredientes que no te gustan ${proBadge('customDiet')}</p>
+      ${pro ? `<div class="search-wrap">${icon('search')}<label for="cd-q" class="sr-only">Buscar ingrediente para evitar</label><input id="cd-q" class="input" placeholder="Ej. cilantro, champiñones…" autocomplete="off" value="${esc(f.q)}"></div>
+        <div id="cd-sugg">${sugg.length ? `<div class="suggest">${sugg.map((i) => `<button data-act="cd-avoid-add" data-id="${i.id}"><span>${esc(i.name)}</span><span class="tag">Evitar</span></button>`).join('')}</div>` : ''}</div>
+        <div class="chips" style="margin-top:8px">${f.avoidIngs.map((id) => `<button class="chip chip-remove" data-act="cd-avoid-remove" data-id="${id}" aria-label="Quitar ${esc(ING[id]?.name)}">${esc(ING[id]?.name)}<span class="x">${icon('x', 'icon-sm')}</span></button>`).join('') || '<span class="small muted">Ninguno todavía.</span>'}</div>`
+        : `<button class="card pressable pro-card row" data-act="paywall" data-feature="customDiet" style="gap:12px"><span class="pro-icon sm">${icon('lock', 'icon-sm')}</span><span class="small" style="flex:1">Evita ingredientes específicos y pon límite de calorías con Pro.</span></button>`}
+    </div>
+
+    ${pro ? `<div>
+      <p class="label">Límite de calorías por comida (opcional)</p>
+      <div class="kcal-grid">${[['desayuno', 'Desayuno'], ['comida', 'Comida'], ['cena', 'Cena'], ['snack', 'Snack']].map(([k, l]) => `<div class="field"><label for="cd-k-${k}" class="small">${l}</label><input id="cd-k-${k}" class="input num" type="number" inputmode="numeric" min="50" max="2000" step="10" placeholder="Sin límite" value="${esc(f.kcalMax[k] ?? '')}"></div>`).join('')}</div>
+    </div>` : ''}
+
+    <div class="notice warn">${icon('alert')}<span>Las dietas propias no están validadas por estudios. Si tienes una condición de salud, revísala con un profesional.</span></div>
+    ${f.id ? `<button class="btn btn-ghost btn-block" data-act="cd-delete" style="--t:var(--err)">${icon('trash', 'icon-sm')} Eliminar esta dieta</button>` : ''}
+  </div>`;
+  const foot = `<button class="btn btn-block" data-act="cd-save">${f.id ? 'Guardar cambios' : 'Crear y usar esta dieta'}</button>`;
+  openSheet(`<h2>${f.id ? 'Editar dieta' : 'Crear mi dieta'}</h2>`, body, foot, { replace: !!document.querySelector('.sheet') });
+}
+
+function readDietForm() {
+  const f = ui.dietForm;
+  const n = document.getElementById('cd-name');
+  if (n) f.name = n.value.trim();
+  for (const k of ['desayuno', 'comida', 'cena', 'snack']) {
+    const el = document.getElementById('cd-k-' + k);
+    if (el) f.kcalMax[k] = el.value;
+  }
+}
+
+// ═════════════════════════ SUGERENCIAS ═════════════════════════
+function suggestSection() {
+  const list = S().suggestions;
+  return `<div class="section-title"><h2>Sugerir una dieta</h2></div>
+    <div class="card stack-sm">
+      <p class="small">¿Te gustaría que agreguemos otra dieta? Cuéntanos cuál. La revisamos con estudios científicos antes de agregarla.</p>
+      <button class="btn btn-ghost btn-block" data-act="suggest-open">${icon('sparkles', 'icon-sm')} Sugerir una dieta</button>
+      ${list.length ? `<p class="slot-label" style="margin-top:6px">Tus sugerencias</p>
+        <ul class="fam-list">${list.slice().reverse().map((x) => `<li><span style="flex:1;min-width:0"><b>${esc(x.name)}</b><br><span class="small muted">${esc(x.date)}</span></span>
+          <span class="badge ${x.status === 'enviada' ? 'alta' : 'media'}">${x.status === 'enviada' ? 'Enviada' : 'Por enviar'}</span></li>`).join('')}</ul>` : ''}
+    </div>`;
+}
+
+function openSuggest() {
+  ui.sugForm = { name: '', why: '', source: '', error: '', sending: false };
+  renderSuggest();
+}
+
+function renderSuggest() {
+  const f = ui.sugForm;
+  const body = `<div class="stack">
+    <div class="speech">${mascot('happy', 'sm')}<div class="bubble">¿Qué dieta te gustaría ver? La investigamos y, si tiene respaldo, la agregamos.</div></div>
+    <div class="field"><label for="sg-name">Nombre de la dieta</label>
+      <input id="sg-name" class="input" maxlength="60" placeholder="Ej. Paleo, Okinawa, Atkins…" value="${esc(f.name)}" ${f.error ? 'aria-invalid="true" aria-describedby="sg-err"' : ''}>
+      ${f.error ? `<p class="field-error" id="sg-err">${esc(f.error)}</p>` : ''}</div>
+    <div class="field"><label for="sg-why">¿Por qué te interesa? (opcional)</label>
+      <textarea id="sg-why" class="input" rows="3" maxlength="400" placeholder="Ej. Me la recomendó mi nutriólogo…">${esc(f.why)}</textarea></div>
+    <div class="field"><label for="sg-src">¿Dónde la conociste? (opcional)</label>
+      <input id="sg-src" class="input" maxlength="200" placeholder="Ej. un link, un libro, tu médico…" value="${esc(f.source)}"></div>
+  </div>`;
+  const foot = `<button class="btn btn-block" data-act="suggest-send" ${f.sending ? 'disabled' : ''}>${f.sending ? 'Enviando…' : 'Enviar sugerencia'}</button>`;
+  openSheet('<h2>Sugerir una dieta</h2>', body, foot, { replace: !!document.querySelector('.sheet') });
+}
+
+async function flushSuggestions() {
+  if (!aiConfigured()) return 0;
+  let sent = 0;
+  for (const sg of S().suggestions.filter((x) => x.status !== 'enviada')) {
+    try {
+      await sendSuggestion(sg);
+      update((s) => { const it = s.suggestions.find((x) => x.id === sg.id); if (it) it.status = 'enviada'; });
+      sent++;
+    } catch {
+      break; // sin conexión o sin almacenamiento: se reintenta después
+    }
+  }
+  return sent;
 }
 
 // ═════════════════════════ HOJA (MODAL) ═════════════════════════
@@ -1032,10 +1267,17 @@ function celebrate(result, recipe) {
       <div class="reward fl"><div class="reward-h">Racha</div><div class="reward-b">${icon('flame')}<span class="num">${result.streak}</span></div></div>
       ${result.levelUp ? `<div class="reward lv"><div class="reward-h">Nivel</div><div class="reward-b num">${lv.level}</div></div>` : ''}
     </div>
+    ${result.challenge ? `<div class="card unlock"><span class="ach-badge" style="background:var(--ok);color:#fff;width:48px;height:48px;border-radius:14px;display:grid;place-items:center">${icon('trophy')}</span><span><b>¡Reto del día completado!</b><br><span class="small muted">${esc(result.challenge)} · +10 XP</span></span></div>` : ''}
     ${result.unlocked.map((a) => `<div class="card unlock"><span class="ach-badge" style="background:var(--gold);color:#6B4E00;width:48px;height:48px;border-radius:14px;display:grid;place-items:center">${icon(a.icon)}</span><span><b>Logro: ${a.name}</b><br><span class="small muted">${a.desc}</span></span></div>`).join('')}
     <button class="btn btn-ok btn-block" style="max-width:360px" data-act="celebrate-close">Continuar</button>`;
   document.body.appendChild(el);
   el.querySelector('[data-act="celebrate-close"]').focus();
+}
+
+function celebrateSmall(text) {
+  toast(text);
+  const m = document.querySelector('.alita-btn .mascot');
+  if (m) { m.classList.add('cheer'); setTimeout(() => m.classList.remove('cheer'), 1200); }
 }
 
 function announceAchievements(list) {
@@ -1044,7 +1286,7 @@ function announceAchievements(list) {
 
 // ═════════════════════════ EVENTOS ═════════════════════════
 const actions = {
-  go: (el) => { ui.tab = el.dataset.tab; render(); window.scrollTo(0, 0); },
+  go: (el) => { ui.tab = el.dataset.tab; ui.tip = null; render(); window.scrollTo(0, 0); },
 
   // Onboarding
   'ob-next': () => {
@@ -1088,6 +1330,22 @@ const actions = {
   'undo-meal': (el) => { undoMeal(el.dataset.slot); closeSheet(); rerenderMain(); toast('Registro deshecho.'); },
 
   // Despensa
+  'pantry-view': (el) => { ui.pantry.view = el.dataset.v; rerenderMain(); },
+  'have-it': (el) => {
+    const { key, name, ing, recipe, slot } = el.dataset;
+    update((s) => {
+      if (ing) { if (!s.pantry.includes(ing)) s.pantry.push(ing); }
+      else if (!s.customPantry.some((c) => norm(c.name) === norm(name))) s.customPantry.push({ id: 'c' + Date.now().toString(36), name });
+      s.shopping = s.shopping.filter((x) => x.key !== key);
+    });
+    announceAchievements(refreshAchievements());
+    toast(`${name} agregado a tu despensa`);
+    openRecipe(recipe, slot || null);
+    const main = document.getElementById('main');
+    if (main) { main.innerHTML = screen(); }
+    const nav = document.querySelector('.bottomnav'); if (nav) nav.outerHTML = bottomnav();
+  },
+  'shop-remove': (el) => { update((s) => { s.shopping = s.shopping.filter((x) => x.key !== el.dataset.key); }); rerenderMain(); },
   'pantry-loc': (el) => { ui.pantry.loc = el.dataset.loc; rerenderMain(); },
   'pantry-add': (el) => {
     addToPantry(el.dataset.id);
@@ -1122,8 +1380,9 @@ const actions = {
   'shop-add': (el) => {
     const { key, name, ing, recipe, slot } = el.dataset;
     update((s) => { if (!s.shopping.some((x) => x.key === key)) s.shopping.push({ key, name, ingId: ing || null, count: 1, done: false, manual: true }); });
-    toast(`${name} en tu lista del súper`);
+    toast(`${name} → Despensa › Por comprar`);
     openRecipe(recipe, slot || null);
+    const nav = document.querySelector('.bottomnav'); if (nav) nav.outerHTML = bottomnav();
   },
 
   // IA
@@ -1158,6 +1417,108 @@ const actions = {
     }
   },
   paywall: (el) => openPaywall(el.dataset.feature || null),
+
+  // Inicio interactivo
+  alita: () => {
+    ui.tip = alitaTip();
+    const b = document.getElementById('alita-bubble');
+    if (b) b.innerHTML = `${esc(ui.tip)}<span class="bubble-hint">Tócame otra vez</span>`;
+    const m = document.querySelector('.alita-btn .mascot');
+    if (m) { m.classList.remove('happy'); m.classList.add('cheer'); setTimeout(() => { m.classList.remove('cheer'); m.classList.add('happy'); }, 900); }
+  },
+  water: (el) => {
+    const res = setWater(Number(el.dataset.n));
+    rerenderMain();
+    if (res.challenge) celebrateSmall('¡Reto del día completado! +10 XP');
+    else if (waterToday() === WATER_GOAL) toast('¡Meta de agua cumplida!');
+  },
+
+  // Dietas propias
+  'diet-new': () => {
+    if (S().customDiets.length >= dietLimits().diets) return openPaywall('customDiet');
+    openDietEditor();
+  },
+  'diet-edit': (el) => openDietEditor(el.dataset.id),
+  'diet-use': (el) => {
+    update((s) => { s.profile.diet = el.dataset.id; s.plan = null; s.shopping = s.shopping.filter((x) => x.manual); });
+    rerenderMain();
+    toast('Dieta cambiada. Genera un plan nuevo.');
+  },
+  'cd-rule': (el) => {
+    readDietForm();
+    const f = ui.dietForm;
+    const fl = el.dataset.flag;
+    if (f.exclude.includes(fl)) f.exclude = f.exclude.filter((x) => x !== fl);
+    else if (f.exclude.length < dietLimits().rules) f.exclude.push(fl);
+    renderDietEditor();
+  },
+  'cd-avoid-add': (el) => {
+    readDietForm();
+    const f = ui.dietForm;
+    if (f.avoidIngs.length < dietLimits().avoid && !f.avoidIngs.includes(el.dataset.id)) f.avoidIngs.push(el.dataset.id);
+    f.q = '';
+    renderDietEditor();
+    document.getElementById('cd-q')?.focus();
+  },
+  'cd-avoid-remove': (el) => { readDietForm(); ui.dietForm.avoidIngs = ui.dietForm.avoidIngs.filter((x) => x !== el.dataset.id); renderDietEditor(); },
+  'cd-save': () => {
+    readDietForm();
+    const f = ui.dietForm;
+    if (!f.name) { f.error = 'Ponle un nombre a tu dieta.'; return renderDietEditor(); }
+    const pro = canUse('customDiet');
+    const kcal = {};
+    if (pro) for (const [k, v] of Object.entries(f.kcalMax)) { const n = Number(v); if (n >= 50) kcal[k] = Math.min(2000, n); }
+    const data = {
+      id: f.id || 'custom_' + Date.now().toString(36),
+      name: f.name.slice(0, 30),
+      exclude: f.exclude.slice(0, dietLimits().rules),
+      avoidIngs: pro ? f.avoidIngs : [],
+      kcalMax: pro && Object.keys(kcal).length ? kcal : null,
+    };
+    const isNew = !f.id;
+    const onboarding = !S().onboarded;
+    update((s) => {
+      const i = s.customDiets.findIndex((x) => x.id === data.id);
+      if (i >= 0) s.customDiets[i] = data; else s.customDiets.push(data);
+      if (isNew && !onboarding) { s.profile.diet = data.id; s.plan = null; }
+      if (!isNew && s.profile.diet === data.id) s.plan = null;
+    });
+    closeSheet();
+    if (onboarding) { ui.ob.diet = data.id; ui.ob.dietOpen = data.id; renderOnboarding(); }
+    else rerenderMain();
+    toast(isNew ? `Dieta “${data.name}” creada` : 'Dieta actualizada');
+  },
+  'cd-delete': () => {
+    const id = ui.dietForm.id;
+    update((s) => {
+      s.customDiets = s.customDiets.filter((x) => x.id !== id);
+      if (s.profile.diet === id) { s.profile.diet = 'biencomer'; s.plan = null; }
+      s.family.members.forEach((m) => { if (m.diet === id) m.diet = 'biencomer'; });
+    });
+    closeSheet();
+    if (!S().onboarded) { if (ui.ob.diet === id) ui.ob.diet = null; renderOnboarding(); } else rerenderMain();
+    toast('Dieta eliminada');
+  },
+
+  // Sugerencias
+  'suggest-open': () => openSuggest(),
+  'suggest-send': async () => {
+    const f = ui.sugForm;
+    f.name = (document.getElementById('sg-name')?.value || '').trim();
+    f.why = (document.getElementById('sg-why')?.value || '').trim();
+    f.source = (document.getElementById('sg-src')?.value || '').trim();
+    if (!f.name) { f.error = 'Escribe el nombre de la dieta.'; return renderSuggest(); }
+    const t = today();
+    if (S().suggestions.filter((x) => x.date === t).length >= 5) { f.error = 'Ya enviaste 5 sugerencias hoy. ¡Gracias! Intenta mañana.'; return renderSuggest(); }
+    const sg = { id: 's' + Date.now().toString(36), name: f.name.slice(0, 60), why: f.why.slice(0, 400), source: f.source.slice(0, 200), currentDiet: getDiet(S().profile.diet).name, date: t, status: 'pendiente' };
+    update((s) => { s.suggestions.push(sg); });
+    f.sending = true;
+    renderSuggest();
+    const sent = await flushSuggestions();
+    closeSheet();
+    if (S().onboarded) rerenderMain();
+    toast(sent ? '¡Gracias! Recibimos tu sugerencia.' : '¡Gracias! La guardamos y se enviará cuando haya conexión.');
+  },
 
   // Escaneo
   'scan-open': () => (canUse('scan') ? openScanSheet() : openPaywall('scan')),
@@ -1334,6 +1695,11 @@ document.addEventListener('input', (e) => {
   if (t.id === 'pantry-search') {
     ui.pantry.query = t.value;
     document.getElementById('pantry-suggest').innerHTML = pantrySuggest();
+  } else if (t.id === 'cd-q' && ui.dietForm) {
+    ui.dietForm.q = t.value;
+    const q = norm(t.value);
+    const sugg = q ? INGREDIENTS.filter((i) => !i.flags.has('staple') && norm(i.name).includes(q) && !ui.dietForm.avoidIngs.includes(i.id)).slice(0, 5) : [];
+    document.getElementById('cd-sugg').innerHTML = sugg.length ? `<div class="suggest">${sugg.map((i) => `<button data-act="cd-avoid-add" data-id="${i.id}"><span>${esc(i.name)}</span><span class="tag">Evitar</span></button>`).join('')}</div>` : '';
   } else if (t.id === 'recipe-search') {
     ui.recipes.query = t.value;
     document.getElementById('recipe-list').innerHTML = recipeList();
@@ -1372,5 +1738,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 subscribe(() => {});
 const frozen = applyStreakFreezes();
+setTimeout(() => { flushSuggestions().catch(() => {}); }, 2000);
 render();
 if (frozen.used) setTimeout(() => toast(`Tu protector de racha cubrió ${frozen.used} ${frozen.used === 1 ? 'día' : 'días'}. ¡Tu racha sigue viva!`), 600);

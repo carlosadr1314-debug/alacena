@@ -59,6 +59,7 @@ export function isCompatible(recipe, profile, mealType = null) {
   const blocked = recipe.ingredients.some((i) => ex.some((f) => flagsOf(i).has(f)));
   if (blocked) return false;
   const diet = getDiet(profile.diet);
+  if (diet.avoidIngs?.length && recipe.ingredients.some((i) => diet.avoidIngs.includes(i.id))) return false;
   if (diet.kcalMax) {
     const types = mealType ? [mealType] : recipe.meals;
     return types.some((t) => recipe.kcal <= (diet.kcalMax[t] ?? 9999));

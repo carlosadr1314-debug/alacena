@@ -138,7 +138,61 @@ export const EVIDENCE_LABEL = {
   media: 'Evidencia moderada',
   baja: 'Evidencia limitada',
   oficial: 'Guía oficial',
+  propia: 'Dieta propia',
 };
+
+// ── Dietas propias (creadas por el usuario) ──
+// Restricciones que el usuario puede elegir al crear su dieta
+export const CUSTOM_RULES = [
+  { flag: 'redMeat', label: 'Carne roja y cerdo' },
+  { flag: 'poultry', label: 'Pollo y pavo' },
+  { flag: 'fish', label: 'Pescados y mariscos' },
+  { flag: 'egg', label: 'Huevo' },
+  { flag: 'dairy', label: 'Lácteos' },
+  { flag: 'gluten', label: 'Gluten (trigo)' },
+  { flag: 'carb', label: 'Altos en carbohidratos' },
+  { flag: 'sugar', label: 'Azúcar añadida' },
+  { flag: 'processed', label: 'Ultraprocesados y embutidos' },
+  { flag: 'sodium', label: 'Altos en sodio' },
+  { flag: 'satfat', label: 'Mantequilla, crema y quesos grasos' },
+  { flag: 'fodmap', label: 'Altos en FODMAP' },
+  { flag: 'soy', label: 'Soya' },
+  { flag: 'nut', label: 'Nueces y cacahuate' },
+];
+
+export const CUSTOM_LIMITS = {
+  free: { diets: 1, rules: 3, avoid: 0, kcal: false },
+  pro: { diets: 5, rules: 99, avoid: 30, kcal: true },
+};
+
+const CUSTOM_COLORS = ['#B5487A', '#2F7D6D', '#8A5A2B', '#4F5BB8', '#A0522D'];
+let customRegistry = [];
+
+// Convierte lo que guardó el usuario en una dieta que entiende el motor
+export function buildCustomDiet(c, idx = 0) {
+  const labels = CUSTOM_RULES.filter((r) => c.exclude.includes(r.flag)).map((r) => r.label.toLowerCase());
+  return {
+    id: c.id,
+    custom: true,
+    name: c.name,
+    short: labels.length ? `Sin ${labels.join(', ')}.` : 'Sin restricciones definidas.',
+    evidence: 'propia',
+    proof: 'Dieta creada por ti. No está validada por estudios; si tienes una condición de salud, revísala con un profesional.',
+    color: CUSTOM_COLORS[idx % CUSTOM_COLORS.length],
+    exclude: [...c.exclude, ...(c.exclude.includes('redMeat') ? ['meat'] : [])],
+    avoidIngs: c.avoidIngs || [],
+    boost: ['veg', 'leanprotein'],
+    kcalMax: c.kcalMax || null,
+  };
+}
+
+export function registerCustomDiets(list = []) {
+  customRegistry = list.map(buildCustomDiet);
+}
+
+export function customDiets() {
+  return customRegistry;
+}
 
 export const MEALS = [
   { id: 'desayuno', name: 'Desayuno', icon: 'sunrise' },
@@ -148,5 +202,5 @@ export const MEALS = [
 ];
 
 export function getDiet(id) {
-  return DIETS.find((d) => d.id === id) || DIETS[0];
+  return DIETS.find((d) => d.id === id) || customRegistry.find((d) => d.id === id) || DIETS[0];
 }

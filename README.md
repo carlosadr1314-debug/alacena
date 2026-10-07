@@ -10,7 +10,8 @@ App web pensada para teléfono que te ayuda a seguir una dieta cocinando con lo 
 - **Plan semanal**: 7 días de recetas y una lista del súper con lo que falta.
 - **IA**: crea recetas nuevas con Google Gemini a través de un proxy gratuito en Cloudflare que guarda tu key.
 - **Módulos Pro** listos para cobrar más adelante (IA, escaneo con foto, plan de 7 días, lista semanal, protector de racha, calorías y macros, plan familiar); durante la beta están desbloqueados.
-- **Estilo Duolingo**: ruta del día, racha diaria, XP y niveles, 12 logros y la mascota *Brote*.
+- **Estilo Duolingo**: ruta del día, reto diario, vasos de agua, racha, XP y niveles, 12 logros y la mascota *Valita* (tócala y te da consejos).
+- **Dietas propias** y **sugerencias de dietas** de los usuarios (se guardan en Cloudflare KV; las revisas en `/sugerencias?token=…`).
 - **Instalable (PWA)** y funciona sin internet, excepto la IA.
 
 Está hecha con HTML, CSS y JavaScript vainilla: sin frameworks, sin build y sin servidor. Los datos se guardan en el dispositivo del usuario (localStorage).
@@ -99,6 +100,7 @@ export const PREMIUM = {
 | Protector de racha (`streakFreeze`) | — | 2 al mes, se usan solos |
 | Calorías y macros (`nutrition`) | — | Meta diaria, macros por dieta y gráfica semanal |
 | Plan familiar (`family`) | — | Hasta 8 personas con su dieta; recetas que sirvan a todos |
+| Dietas propias (`customDiet`) | 1 dieta, hasta 3 restricciones | Hasta 5 dietas, todas las restricciones, ingredientes a evitar y calorías por comida |
 
 - Con `enforce: false` todos usan todo y ven la etiqueta **PRO · gratis en beta**.
 - En **Perfil → Herramientas de prueba → Simular cuenta gratuita** ves cómo se verá la app con los módulos bloqueados.
@@ -118,7 +120,7 @@ js/game.js              XP, niveles, racha y logros
 js/ai.js                Conexión con la IA (vía Worker)
 js/premium.js           Módulos Pro y candados
 js/store.js             Guardado local
-js/icons.js             Íconos SVG y la mascota Brote
+js/icons.js             Íconos SVG y la mascota Valita
 js/data/diets.js        Las 12 dietas y sus reglas
 js/data/ingredients.js  Catálogo de ingredientes con sus características
 js/data/recipes.js      Recetario integrado

@@ -8,6 +8,7 @@ import { ING, matchIngredient } from './data/ingredients.js';
 import { planningProfiles, allExcludedFlags, dietKey, familyActive } from './engine.js';
 
 const FLAG_TEXT = {
+  gluten: 'gluten (trigo, pan, pasta, tortilla de harina)', soy: 'soya', nut: 'nueces y cacahuate',
   meat: 'carne roja o de cerdo', redMeat: 'carne roja', poultry: 'pollo o pavo', fish: 'pescados y mariscos',
   egg: 'huevo', dairy: 'lácteos', honey: 'miel', processed: 'ultraprocesados y embutidos',
   carb: 'alimentos altos en carbohidratos (tortilla, pan, arroz, pasta, papa, legumbres, frutas dulces)',
@@ -35,7 +36,7 @@ function countUse() {
 
 async function callWorker(payload, { signal } = {}) {
   if (!AI_ENDPOINT) throw new Error('NOT_CONFIGURED');
-  const metered = payload.action !== 'ping';
+  const metered = payload.action === 'recipes' || payload.action === 'scan';
   if (metered && aiUsesLeft() <= 0) throw new Error('DAILY_LIMIT');
   let res;
   try {
@@ -108,7 +109,10 @@ export async function generateRecipes({ mealType, count = 3, extra = '', signal 
       diet: {
         name: diets.map((d) => d.name).join(' + '),
         short: diets.map((d) => d.short).join(' / '),
-        banned: allExcludedFlags(state).map((f) => FLAG_TEXT[f]).filter(Boolean),
+        banned: [
+          ...allExcludedFlags(state).map((f) => FLAG_TEXT[f]).filter(Boolean),
+          ...avoidedIngredients(state).map((id) => ING[id]?.name).filter(Boolean),
+        ],
         kcalMax: mealType && kcals.length ? Math.min(...kcals) : 0,
       },
       pantry: pantryNames(state),
@@ -136,9 +140,15 @@ export async function generateRecipes({ mealType, count = 3, extra = '', signal 
 // La IA a veces se equivoca: revisamos sus ingredientes contra las reglas de la dieta
 export function dietWarnings(recipe, state = getState()) {
   const ex = allExcludedFlags(state);
+  const avoid = avoidedIngredients(state);
   return recipe.ingredients
-    .filter((i) => i.id && ING[i.id] && ex.some((f) => ING[i.id].flags.has(f)))
+    .filter((i) => i.id && ING[i.id] && (ex.some((f) => ING[i.id].flags.has(f)) || avoid.includes(i.id)))
     .map((i) => i.name);
+}
+
+// Ingredientes específicos que evitan las dietas propias de quienes van a comer
+function avoidedIngredients(state) {
+  return [...new Set(planningProfiles(state).flatMap((p) => getDiet(p.diet).avoidIngs || []))];
 }
 
 // ── Escanear despensa con foto ──
@@ -211,4 +221,13 @@ function normalizeAIRecipe(r, dietId, mealType, idx) {
     }),
     steps: (r.steps || []).map((s) => String(s)).slice(0, 10),
   };
+}
+
+// ── Sugerencias de dietas ──
+export async function sendSuggestion(sug) {
+  const data = await callWorker({
+    action: 'suggest',
+    suggestion: { name: sug.name, why: sug.why, source: sug.source, currentDiet: sug.currentDiet, date: sug.date, id: sug.id },
+  });
+  return !!data.ok;
 }

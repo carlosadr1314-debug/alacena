@@ -1,6 +1,8 @@
 // Estado de la app guardado en el dispositivo (localStorage).
 // Todo vive en el teléfono del usuario: no hay servidor.
 
+import { registerCustomDiets } from './data/diets.js';
+
 const KEY = 'alacena.state.v1';
 
 export const DEFAULT_STATE = {
@@ -29,9 +31,14 @@ export const DEFAULT_STATE = {
   favorites: [],
   family: { enabled: false, members: [] }, // [{id, name, diet, vegan}]
   aiUsage: { date: null, count: 0 },
+  customDiets: [],     // [{id, name, exclude[], avoidIngs[], kcalMax}]
+  suggestions: [],     // dietas sugeridas por el usuario [{id, name, why, source, date, status}]
+  water: {},           // { 'YYYY-MM-DD': vasos }
+  challenges: {},      // { 'YYYY-MM-DD': true } retos del día completados
 };
 
 let state = load();
+registerCustomDiets(state.customDiets);
 const listeners = new Set();
 
 function load() {
@@ -67,6 +74,7 @@ export function getState() {
 
 export function update(fn) {
   fn(state);
+  registerCustomDiets(state.customDiets);
   save();
   listeners.forEach((l) => l(state));
 }
@@ -78,6 +86,7 @@ export function subscribe(fn) {
 
 export function resetState() {
   state = structuredClone(DEFAULT_STATE);
+  registerCustomDiets([]);
   save();
   listeners.forEach((l) => l(state));
 }

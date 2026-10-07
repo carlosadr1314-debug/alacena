@@ -18,5 +18,5 @@ export const AI_DAILY_LIMIT = 20;
 export const PREMIUM = {
   enforce: false,
   price: '$59 MXN/mes', // precio de referencia que se muestra en la pantalla Pro
-  features: ['ai', 'scan', 'weekPlan', 'weekShopping', 'streakFreeze', 'nutrition', 'family'],
+  features: ['ai', 'scan', 'weekPlan', 'weekShopping', 'streakFreeze', 'nutrition', 'family', 'customDiet'],
 };

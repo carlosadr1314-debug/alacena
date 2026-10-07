@@ -1,4 +1,4 @@
-// Íconos SVG (trazo, estilo redondeado) y la mascota "Brote".
+// Íconos SVG (trazo, estilo redondeado) y la mascota "Valita".
 
 const P = {
   home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
@@ -50,7 +50,7 @@ export function icon(name, cls = '') {
 
 export const MEAL_ICON = { desayuno: 'sunrise', snack: 'apple', comida: 'sun', cena: 'moon' };
 
-// Mascota original: "Brote", un brotecito verde.
+// Mascota original: "Valita", un brotecito verde.
 // mood: happy | cheer | sleepy | think
 export function mascot(mood = 'happy', size = '') {
   const mouths = {
@@ -68,7 +68,7 @@ export function mascot(mood = 'happy', size = '') {
           <circle cx="${mood === 'think' ? 65 : 63.5}" cy="${mood === 'think' ? 55 : 60}" r="5.4" fill="#22302A"/>
           <circle cx="41.5" cy="57" r="1.9" fill="#fff"/><circle cx="65.5" cy="57" r="1.9" fill="#fff"/>
         </g>`;
-  return `<svg class="mascot ${mood} ${size}" viewBox="0 0 100 110" role="img" aria-label="Brote, tu compañero de cocina">
+  return `<svg class="mascot ${mood} ${size}" viewBox="0 0 100 110" role="img" aria-label="Valita, tu compañera de cocina">
     <ellipse cx="50" cy="104" rx="26" ry="4.5" fill="#22302A" opacity=".08"/>
     <g class="m-body">
       <path d="M50 34V24" stroke="#2F8F4A" stroke-width="4.5" stroke-linecap="round"/>
