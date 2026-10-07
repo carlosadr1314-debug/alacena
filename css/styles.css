@@ -439,6 +439,12 @@ textarea.input { resize: vertical; min-height: 88px; font-family: inherit; }
 .terms a { color: var(--brand-ink); font-weight: 800; }
 .linkbtn.tiny { min-height: 24px; font-size: 12.5px; padding: 0; }
 
+.diet-recs h3 { font-size: 17px; }
+.rec-card { padding: 14px; }
+.rec-card.current { border-color: #9ED8B2; background: var(--ok-soft); }
+.rec-reasons { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-2); }
+.rec-reasons li + li { margin-top: 4px; }
+
 /* ── Confirmación ── */
 .confirm-box { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 8px 4px 4px; }
 .confirm-box h2 { font-size: 22px; }

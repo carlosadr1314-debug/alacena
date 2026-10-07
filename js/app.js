@@ -18,6 +18,7 @@ import { aiConfigured, generateRecipes, aiErrorMessage, pingAI, aiUsesLeft, comp
 import { canUse, isProFeature, isOpenBeta, PRO_FEATURES } from './premium.js';
 import { PREMIUM } from './config.js';
 import { icon, mascot, MEAL_ICON } from './icons.js';
+import { recommendDiets, currentDietNote } from './recommend.js';
 
 const $app = document.getElementById('app');
 
@@ -415,13 +416,52 @@ function openKcalCalc(result = null, error = '') {
       <div class="row between"><span class="small">Con tu actividad diaria</span><b class="num">${result.tdee} kcal</b></div>
       <div class="row between"><b>Meta recomendada</b><b class="num" style="font-size:22px;color:var(--brand-ink)">${result.goal} kcal</b></div>
       ${result.floored ? '<p class="tiny muted">Ajustamos al mínimo seguro recomendado. Para bajar más rápido, consulta a un profesional.</p>' : ''}
-    </div>` : ''}
+    </div>
+    ${dietRecsHtml(S().profile.body)}` : ''}
     <p class="tiny muted">Estos datos se guardan solo en tu teléfono. No los recomendamos para embarazo, lactancia, menores de edad o condiciones médicas: ahí consulta a un profesional.</p>
   </div>`;
   const foot = result
-    ? `<button class="btn btn-block" data-act="kcal-calc-use" data-kcal="${result.goal}">Usar ${result.goal} kcal como mi meta</button>`
+    ? `<button class="btn btn-block" data-act="kcal-calc-use" data-kcal="${result.goal}">Usar ${result.goal} kcal</button>`
     : `<button class="btn btn-block" data-act="kcal-calc-run">Calcular</button>`;
   openSheet('<h2>Calcular mi meta</h2>', body, foot, { replace: !!document.querySelector('.sheet') });
+}
+
+// Dietas que mejor se acomodan a la meta del usuario
+function dietRecsHtml(body, limit = 3) {
+  const recs = recommendDiets(body).slice(0, limit);
+  if (!recs.length) return '';
+  const cur = S().profile.diet;
+  const curDiet = getDiet(cur);
+  const inTop = recs.some((r) => r.diet.id === cur);
+  const avoid = currentDietNote(cur, body);
+  const goalTxt = { bajar: 'bajar de peso', mantener: 'mantener tu peso', subir: 'subir de peso' }[body.goal] || 'tu meta';
+  const curNote = avoid
+    ? `<div class="notice warn">${icon('alert')}<span>Tu dieta actual (<b>${esc(curDiet.name)}</b>) no es la ideal para ${goalTxt}: ${esc(avoid)}</span></div>`
+    : inTop
+      ? `<div class="notice info">${icon('check')}<span>Tu dieta actual (<b>${esc(curDiet.name)}</b>) está entre las mejores para ${goalTxt}.</span></div>`
+      : `<p class="small muted">Tu dieta actual es <b>${esc(curDiet.name)}</b>. Estas se acomodan mejor a tu objetivo:</p>`;
+  return `<section class="stack-sm diet-recs" aria-label="Dietas recomendadas">
+    <h3><span class="tip-prefix">Valita recomienda</span> para ${goalTxt}</h3>
+    ${curNote}
+    ${recs.map((r, i) => {
+      const d = r.diet;
+      const isCur = d.id === cur;
+      return `<div class="card rec-card ${isCur ? 'current' : ''}">
+        <div class="row" style="gap:12px;align-items:flex-start">
+          <span class="diet-icon" style="background:${d.color}" aria-hidden="true">${dietIconText(d)}</span>
+          <div style="flex:1;min-width:0">
+            <div class="row between" style="align-items:flex-start;gap:6px"><b>${i + 1}. ${esc(d.name)}</b><span class="badge ${d.evidence}">${EVIDENCE_LABEL[d.evidence]}</span></div>
+            <ul class="rec-reasons">${r.reasons.slice(0, 2).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+            ${d.warning ? `<p class="tiny" style="color:var(--warn)">${esc(d.warning)}</p>` : ''}
+          </div>
+        </div>
+        ${isCur
+          ? `<p class="small bold center" style="color:var(--ok-ink);margin-top:8px">${icon('check', 'icon-sm')} Es tu dieta actual</p>`
+          : `<button class="btn btn-ghost btn-block accent btn-sm" style="margin-top:10px" data-act="diet-switch" data-id="${d.id}">Cambiar a ${esc(d.name)}</button>`}
+      </div>`;
+    }).join('')}
+    <p class="tiny muted">Sugerencia general basada en estudios y en tus datos; no es un diagnóstico. Si tienes una condición de salud, decide con un profesional.</p>
+  </section>`;
 }
 
 function readKcalForm() {
@@ -449,7 +489,8 @@ function runKcalCalc() {
   let goal = Math.round((tdee + delta) / 50) * 50;
   const floored = goal < min;
   if (floored) goal = min;
-  openKcalCalc({ bmr, tdee, goal, floored });
+  ui.kcResult = { bmr, tdee, goal, floored };
+  openKcalCalc(ui.kcResult);
 }
 
 // Reparto sugerido de calorías por tiempo de comida
@@ -1170,6 +1211,7 @@ function kcalGoalCard() {
       <button class="btn btn-ghost" style="align-self:flex-end" data-act="kcal-calc">${icon('sliders', 'icon-sm')} Calcular</button>
     </div>
     ${body?.weight ? `<p class="tiny muted">Calculada con: ${body.sex === 'm' ? 'hombre' : 'mujer'}, ${body.age} años, ${body.weight} kg, ${body.height} cm.</p>` : ''}
+    ${body?.weight && body?.goal ? dietRecsHtml(body) : `<p class="small muted">Usa <b>Calcular</b> con tus datos y Valita te dirá qué dietas se acomodan mejor a tu meta.</p>`}
 
     <div>
       <p class="label">Tus macros (según tu dieta ${esc(getDiet(s.profile.diet).name)})</p>
@@ -1684,6 +1726,13 @@ const actions = {
   },
   'kcal-calc': () => openKcalCalc(),
   'kcal-calc-run': () => runKcalCalc(),
+  'diet-switch': (el) => {
+    const d = getDiet(el.dataset.id);
+    update((s) => { s.profile.diet = d.id; s.plan = null; s.shopping = s.shopping.filter((x) => x.manual); });
+    if (document.querySelector('.sheet') && ui.kcResult) openKcalCalc(ui.kcResult);
+    rerenderMain();
+    toast(`Cambiaste a ${d.name}. Genera un plan nuevo cuando quieras.`);
+  },
   'kcal-calc-use': (el) => {
     const v = Number(el.dataset.kcal);
     update((s) => { s.profile.kcalGoal = v; });
