@@ -668,6 +668,22 @@ function openRecipe(id, slotId = null) {
   openSheet('', body, foot);
 }
 
+// Confirmación cuando faltan ingredientes
+function confirmCook(recipe, slotId, missing) {
+  const names = missing.slice(0, 5).map(ingredientName);
+  const body = `<div class="confirm-box" role="alertdialog" aria-labelledby="cc-title" aria-describedby="cc-desc">
+    ${mascot('think')}
+    <h2 id="cc-title">¿Estás seguro de que ya lo cocinaste?</h2>
+    <p id="cc-desc" class="muted">Aún te ${missing.length === 1 ? 'falta' : 'faltan'} <b>${esc(names.join(', '))}${missing.length > 5 ? ` y ${missing.length - 5} más` : ''}</b>.</p>
+  </div>`;
+  const foot = `<div class="stack-sm confirm-actions">
+    <button class="btn btn-ok btn-block" data-act="cook" data-confirmed="1" data-id="${recipe.id}" data-slot="${slotId}">Sí, sin problema</button>
+    <button class="btn btn-ghost btn-block" data-act="cook-back" data-id="${recipe.id}" data-slot="${slotId}">No, aún me faltan cosas por agregar</button>
+  </div>`;
+  openSheet('', body, foot, { replace: true });
+  document.querySelector('.sheet-foot .btn-ghost')?.focus();
+}
+
 // ═════════════════════════ IA ═════════════════════════
 function openAISheet(mealType) {
   ui.ai.meal = mealType || null;
@@ -1227,6 +1243,7 @@ function openSheet(title, body, foot = '', { replace = false } = {}) {
   el.addEventListener('click', (e) => { if (e.target === el) closeSheet(); });
   document.body.appendChild(el);
   document.body.style.overflow = 'hidden';
+  document.body.classList.add('sheet-open');
   el.querySelector('[data-act="sheet-close"]').focus();
 }
 
@@ -1235,6 +1252,7 @@ function closeSheet() {
   ui.scan.controller?.abort();
   document.querySelector('.sheet-backdrop')?.remove();
   document.body.style.overflow = '';
+  document.body.classList.remove('sheet-open');
   lastFocus?.focus?.();
 }
 
@@ -1348,11 +1366,21 @@ const actions = {
   'shop-remove': (el) => { update((s) => { s.shopping = s.shopping.filter((x) => x.key !== el.dataset.key); }); rerenderMain(); },
   'pantry-loc': (el) => { ui.pantry.loc = el.dataset.loc; rerenderMain(); },
   'pantry-add': (el) => {
+    const fromSearch = !!el.closest('#pantry-suggest');
+    const y = window.scrollY;
     addToPantry(el.dataset.id);
     toast(`${ING[el.dataset.id].name} agregado`);
-    ui.pantry.query = '';
-    rerenderMain();
-    document.getElementById('pantry-search')?.focus();
+    if (fromSearch) {
+      // vino del buscador: limpia y deja el cursor listo para el siguiente
+      ui.pantry.query = '';
+      rerenderMain();
+      document.getElementById('pantry-search')?.focus();
+    } else {
+      // agregar rápido: no abrir el teclado ni mover la pantalla
+      rerenderMain();
+      document.activeElement?.blur?.();
+      window.scrollTo(0, y);
+    }
   },
   'pantry-add-custom': () => {
     const name = ui.pantry.query.trim().slice(0, 40);
@@ -1371,11 +1399,14 @@ const actions = {
   recipe: (el) => openRecipe(el.dataset.id, el.dataset.slot || null),
   cook: (el) => {
     const recipe = findRecipe(el.dataset.id);
+    const missing = recipe ? matchInfo(recipe).missing : [];
+    if (missing.length && el.dataset.confirmed !== '1') return confirmCook(recipe, el.dataset.slot, missing);
     const res = logMeal(el.dataset.slot, el.dataset.id);
     closeSheet();
     rerenderMain();
     if (res.xp) celebrate(res, recipe);
   },
+  'cook-back': (el) => openRecipe(el.dataset.id, el.dataset.slot || null),
   'celebrate-close': () => { document.querySelector('.celebrate')?.remove(); rerenderMain(); },
   'shop-add': (el) => {
     const { key, name, ing, recipe, slot } = el.dataset;
