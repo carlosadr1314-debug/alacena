@@ -72,6 +72,7 @@ export function aiErrorMessage(err) {
     case 'IMAGE_TOO_BIG': return 'La foto es muy pesada. Intenta con otra o acércate un poco más.';
     case 'NO_ITEMS': return 'No reconocí ingredientes en la foto. Intenta con más luz y que se vean las etiquetas.';
     case 'PARSE': return 'La IA respondió en un formato inesperado. Intenta de nuevo.';
+    case 'BUSY': return 'La IA de Google está saturada en este momento. Intenta de nuevo en un minuto.';
     case 'BAD_KEY': return 'La API key de Gemini no es válida. Revisa GEMINI_API_KEY en el Worker.';
     case 'REGION': return 'Google no permite usar Gemini desde la región del servidor.';
     case 'NETWORK': return 'No hay conexión con el servidor de IA. Revisa tu internet.';

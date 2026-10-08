@@ -19,7 +19,7 @@
 // Más adelante, aquí mismo se validará si el usuario tiene plan Pro.
 // ─────────────────────────────────────────────────────────────
 
-const DEFAULT_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+const DEFAULT_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
 const MEALS = ['desayuno', 'comida', 'cena', 'snack'];
 
 const clip = (s, n) => String(s ?? '').replace(/[\u0000-\u001f]/g, ' ').slice(0, n);
@@ -94,7 +94,14 @@ async function underLimit(env, ip) {
 }
 
 async function callGemini(env, prompt, image = null) {
-  const models = env.GEMINI_MODEL ? [env.GEMINI_MODEL, ...DEFAULT_MODELS] : DEFAULT_MODELS;
+  const models = [...new Set(env.GEMINI_MODEL ? [env.GEMINI_MODEL, ...DEFAULT_MODELS] : DEFAULT_MODELS)];
+  let busy = false;
+  // Dos vueltas: si Google está saturado (503) se prueba el siguiente modelo y luego se reintenta.
+  for (let round = 0; round < 2; round++) {
+  if (round === 1) {
+    if (!busy) break;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
   for (const model of models) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
@@ -108,6 +115,11 @@ async function callGemini(env, prompt, image = null) {
       }),
     });
     if (res.status === 404) continue; // modelo no disponible: probar el siguiente
+    if (res.status === 500 || res.status === 503 || res.status === 504) {
+      console.log('Gemini ocupado', model, res.status);
+      busy = true;
+      continue; // saturado: probar otro modelo
+    }
     if (res.status === 429) return { error: 'RATE_LIMIT', status: 429 };
     if (!res.ok) {
       // Se ve en Cloudflare → tu Worker → Observability / Logs (nunca incluye la key).
@@ -122,7 +134,8 @@ async function callGemini(env, prompt, image = null) {
     const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
     return { text };
   }
-  return { error: 'MODEL_NOT_FOUND', status: 502 };
+  }
+  return busy ? { error: 'BUSY', status: 503 } : { error: 'MODEL_NOT_FOUND', status: 502 };
 }
 
 const escHtml = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
