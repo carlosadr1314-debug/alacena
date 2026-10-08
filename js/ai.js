@@ -95,7 +95,7 @@ function pantryNames(state) {
 }
 
 // Pide recetas nuevas usando la despensa y la dieta del usuario
-export async function generateRecipes({ mealType, count = 3, extra = '', signal } = {}) {
+export async function generateRecipes({ mealType, count = 3, extra = '', avail = 'near', signal } = {}) {
   const state = getState();
   const profiles = planningProfiles(state);
   const diets = [...new Set(profiles.map((p) => p.diet))].map(getDiet);
@@ -107,6 +107,7 @@ export async function generateRecipes({ mealType, count = 3, extra = '', signal 
       mealType,
       count,
       extra,
+      avail,
       people: profiles.length,
       vegan: profiles.some((p) => getDiet(p.diet).id === 'vegetariana' && p.vegan),
       diet: {
@@ -223,6 +224,11 @@ function normalizeAIRecipe(r, dietId, mealType, idx) {
       return { id: m ? m.id : null, name, qty: String(i.qty || '') };
     }),
     steps: (r.steps || []).map((s) => String(s)).slice(0, 10),
+    note: r.note ? String(r.note).slice(0, 200) : '',
+    subs: (Array.isArray(r.subs) ? r.subs : [])
+      .filter((x) => x && x.from && x.to)
+      .slice(0, 4)
+      .map((x) => ({ from: String(x.from).slice(0, 40), to: String(x.to).slice(0, 60), why: String(x.why || '').slice(0, 140) })),
   };
 }
 

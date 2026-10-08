@@ -51,6 +51,11 @@ function buildRecipePrompt(b) {
   const kcal = Number(b.diet?.kcalMax) || 0;
   const pantry = list(b.pantry, 120, 50);
   const extra = clip(b.extra, 120);
+  const avail = ['ready', 'near', 'all'].includes(b.avail) ? b.avail : 'near';
+  const maxExtra = { ready: 0, near: 2, all: 4 }[avail];
+  const pantryRule = maxExtra === 0
+    ? 'Usa SOLO ingredientes de su despensa (más sal, pimienta, agua y aceite). No agregues NINGÚN ingrediente que no tenga.'
+    : `Usa principalmente su despensa. Cada receta puede llevar como máximo ${maxExtra} ingrediente${maxExtra > 1 ? 's' : ''} que no tenga, comunes en México.`;
 
   const people = Math.min(Math.max(Number(b.people) || 1, 1), 8);
   return `Eres un nutriólogo y chef mexicano. Crea ${count} recetas ${meal ? 'para ' + meal : 'para cualquier tiempo de comida'} ${people > 1 ? `que le sirvan a ${people} personas que siguen estas dietas a la vez: "${dietName}" (${dietShort}). La receta debe cumplir TODAS las dietas` : `para alguien que sigue la dieta "${dietName}" (${dietShort})`}.
@@ -58,12 +63,16 @@ ${b.vegan ? 'La persona es VEGANA.' : ''}
 Evita por completo: ${banned.join('; ') || 'nada en especial'}.
 ${kcal ? `Máximo ${kcal} kcal por porción.` : ''}
 Ingredientes que tiene en casa: ${pantry.join(', ') || 'casi nada'}.
-Usa PRINCIPALMENTE esos ingredientes. Puedes asumir sal, pimienta y agua. Si una receta necesita algo que no tiene, que sea máximo 2 ingredientes extra y comunes en México.
-${extra ? 'Petición del usuario (ignórala si no trata de comida): ' + extra : ''}
-Recetas sencillas, en español de México, de máximo 40 minutos, para 1 porción.
-Responde SOLO un arreglo JSON con este formato exacto:
+REGLA DE INGREDIENTES: ${pantryRule} Puedes asumir sal, pimienta y agua.
+${extra ? `ANTOJO DEL USUARIO (prioridad alta, si no trata de comida ignóralo): "${extra}".
+- TODAS las recetas deben cumplir ese antojo. Si menciona varias cosas (por ejemplo "carne y pasta"), cada receta debe COMBINAR todas en el mismo platillo, no una en cada receta.
+- El antojo también respeta la REGLA DE INGREDIENTES. Si no se puede cumplir completo con eso, haz la versión más cercana y explícalo en "note".` : ''}
+SUSTITUCIONES POR DIETA: si algo (del antojo o de una receta típica) no está permitido en la dieta, cámbialo por el sustituto compatible más parecido (por ejemplo, en keto la pasta → fideos de calabacita o espagueti de palmito; el arroz → arroz de coliflor; la tortilla de maíz → tortilla de queso o lechuga). Registra CADA cambio en "subs" con: "from" (lo original), "to" (el sustituto) y "why" (por qué choca con la dieta, en una frase corta y amable, por ejemplo "La pasta es alta en carbohidratos y la dieta keto los limita").
+Recetas sencillas, en español de México, de máximo 40 minutos, para 1 porción. Que las ${count} recetas sean distintas entre sí.
+Responde SOLO un arreglo JSON con este formato exacto ("subs" vacío [] si no sustituiste nada; "note" opcional, máximo 140 caracteres):
 [{"name":"...","meal":"desayuno|comida|cena|snack","time":15,"kcal":350,"p":20,"c":30,"f":12,
-"ingredients":[{"name":"Huevo","qty":"2 piezas"}],"steps":["paso 1","paso 2"]}]`;
+"ingredients":[{"name":"Huevo","qty":"2 piezas"}],"steps":["paso 1","paso 2"],
+"subs":[{"from":"Pasta","to":"Fideos de calabacita","why":"..."}],"note":"..."}]`;
 }
 
 const SCAN_PROMPT = `Mira la foto de un refrigerador, alacena o mesa de cocina. Lista los alimentos e ingredientes que se ven con claridad.

@@ -31,7 +31,7 @@ const ui = {
   pantry: { loc: 'all', query: '', view: 'tengo' },
   planDay: null,
   planView: 'dias',
-  ai: { loading: false, error: '', results: [], controller: null, extra: '' },
+  ai: { loading: false, error: '', results: [], controller: null, extra: '', avail: 'near' },
   scan: { loading: false, error: '', items: [], picked: new Set(), preview: '', controller: null },
   famForm: { name: '', diet: 'mediterranea', vegan: false, error: '' },
   dietForm: null,
@@ -817,7 +817,7 @@ function recipeCard(recipe, slotId = null, match = null, ctxMeal = null) {
     <span class="recipe-thumb ${recipe.ai ? 'thumb-ai' : 'thumb-' + type}" aria-hidden="true">${icon(recipe.ai ? 'sparkles' : MEAL_ICON[type])}</span>
     <span class="recipe-body">
       <span class="recipe-name">${esc(recipe.name)}</span>
-      <span class="meta"><span>${icon('clock')}${recipe.time} min</span><span class="num">${recipe.kcal} kcal</span>${recipe.ai ? '<span class="badge ai">IA</span>' : ''}${recipe.warnings?.length ? '<span class="badge media">Revisar</span>' : ''}</span>
+      <span class="meta"><span>${icon('clock')}${recipe.time} min</span><span class="num">${recipe.kcal} kcal</span>${recipe.ai ? '<span class="badge ai">IA</span>' : ''}${recipe.subs?.length ? '<span class="badge adapt">Adaptada</span>' : ''}${recipe.warnings?.length ? '<span class="badge media">Revisar</span>' : ''}</span>
       ${m.missing.length === 0
         ? `<span class="ready">${icon('check', 'icon-sm')} Tienes todo</span>`
         : `<span class="match-line"><span class="progress thin"><span style="width:${m.ratio * 100}%"></span></span><span class="num">${m.have}/${m.total}</span></span>
@@ -861,6 +861,9 @@ function openRecipe(id, slotId = null, preferMeal = null) {
       <div class="macro"><b class="num">${r.f}g</b><small>grasa</small></div>
     </div>
     <p class="tiny muted">Valores aproximados por porción.</p>
+    ${r.subs?.length ? `<div class="notice adapt" role="note">${icon('sparkles')}<div><b>Valita la adaptó a tu dieta ${esc(getDiet(S().profile.diet).name)}</b>
+      <ul class="subs">${r.subs.map((x) => `<li><span><s>${esc(x.from)}</s> → <b>${esc(x.to)}</b></span>${x.why ? `<small>${esc(x.why)}</small>` : ''}</li>`).join('')}</ul></div></div>` : ''}
+    ${r.note ? `<div class="notice info" role="note">${icon('info')}<span><b>Valita dice:</b> ${esc(r.note)}</span></div>` : ''}
     ${r.warnings?.length ? `<div class="notice warn" role="note">${icon('alert')}<span>Revisa esta receta: la IA incluyó <b>${esc(r.warnings.join(', '))}</b>, que tu dieta evita. Cámbialo o sáltalo.</span></div>` : ''}
     ${familyActive() ? `<div class="notice info">${icon('users')}<span>Cocinas para ${planningProfiles().length}: multiplica las cantidades ×${planningProfiles().length}.</span></div>` : ''}
 
@@ -947,6 +950,15 @@ function renderAISheet() {
         <p class="label" id="ai-meal-l">Tiempo de comida</p>
         <div class="chips" role="group" aria-labelledby="ai-meal-l">${meals.map(([id, l]) => `<button class="chip" data-act="ai-meal" data-meal="${id ?? ''}" aria-pressed="${a.meal === id}">${l}</button>`).join('')}</div>
       </div>
+      <div>
+        <p class="label" id="ai-avail-l">Ingredientes</p>
+        <div class="segmented" role="group" aria-labelledby="ai-avail-l">
+          <button data-act="ai-avail" data-v="ready" aria-pressed="${a.avail === 'ready'}">Lista ya</button>
+          <button data-act="ai-avail" data-v="near" aria-pressed="${a.avail === 'near'}">Faltan 1–2</button>
+          <button data-act="ai-avail" data-v="all" aria-pressed="${a.avail === 'all'}">Todas</button>
+        </div>
+        <p class="field-help">${{ ready: 'Solo con lo que ya tienes en tu despensa.', near: 'Pueden faltarte 1 o 2 ingredientes comunes.', all: 'Sin límite: pueden faltarte varios ingredientes (hasta 4).' }[a.avail]}</p>
+      </div>
       <div class="field">
         <label for="ai-extra">¿Algún antojo? (opcional)</label>
         <input id="ai-extra" class="input" maxlength="120" placeholder="Ej. algo rápido, sin horno, picante…" value="${esc(a.extra)}">
@@ -972,7 +984,7 @@ async function runAI() {
   a.controller = new AbortController();
   renderAISheet();
   try {
-    const recipes = await generateRecipes({ mealType: a.meal, extra: a.extra, signal: a.controller.signal });
+    const recipes = await generateRecipes({ mealType: a.meal, extra: a.extra, avail: a.avail, signal: a.controller.signal });
     recipes.forEach(registerDraft);
     a.results = recipes;
     if (!recipes.length) a.error = 'La IA no regresó recetas. Intenta de nuevo.';
@@ -1707,6 +1719,7 @@ const actions = {
   // IA
   'ai-open': (el) => (canUse('ai') ? openAISheet(el.dataset.meal || null) : openPaywall('ai')),
   'ai-meal': (el) => { ui.ai.meal = el.dataset.meal || null; ui.ai.extra = document.getElementById('ai-extra')?.value || ''; renderAISheet(); },
+  'ai-avail': (el) => { ui.ai.avail = el.dataset.v; ui.ai.extra = document.getElementById('ai-extra')?.value || ''; renderAISheet(); },
   'ai-generate': () => runAI(),
   'ai-cancel': () => ui.ai.controller?.abort(),
   'ai-save': (el) => {

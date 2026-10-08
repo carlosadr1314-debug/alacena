@@ -383,6 +383,13 @@ button.card.pressable:not(.row):not(.recipe-card):not(.diet-option) { display: b
 .badge.baja { background: var(--err-soft); color: #A42E33; }
 .badge.oficial { background: #E6F0FA; color: #1F5F99; }
 .badge.ai { background: var(--ai-soft); color: var(--ai-lip); }
+.badge.adapt { background: #E6F4EA; color: #1E6B3A; }
+.notice.adapt { background: #E6F4EA; color: #1E4D2E; align-items: flex-start; }
+.notice.adapt ul.subs { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.notice.adapt ul.subs li { display: grid; gap: 1px; }
+.notice.adapt ul.subs s { opacity: .7; }
+.notice.adapt ul.subs small { font-size: .82em; opacity: .85; }
+
 
 /* ── Despensa / por comprar ── */
 .nav-ic { position: relative; display: inline-flex; }
