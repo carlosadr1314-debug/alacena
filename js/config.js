@@ -6,7 +6,7 @@ export const APP_NAME = 'Alacena';
 // URL de tu Cloudflare Worker (ver worker/worker.js y el README).
 // Ejemplo: 'https://alacena-ia.tu-cuenta.workers.dev'
 // Vacío = la IA aparece como "no configurada".
-export const AI_ENDPOINT = '';
+export const AI_ENDPOINT = 'https://alacena.carlosadr1314.workers.dev';
 
 // Límite de usos de IA por dispositivo al día (recetas + escaneos).
 // Cuida tu cuota gratuita de Gemini durante las pruebas.
