@@ -109,7 +109,15 @@ async function callGemini(env, prompt, image = null) {
     });
     if (res.status === 404) continue; // modelo no disponible: probar el siguiente
     if (res.status === 429) return { error: 'RATE_LIMIT', status: 429 };
-    if (!res.ok) return { error: 'UPSTREAM_' + res.status, status: 502 };
+    if (!res.ok) {
+      // Se ve en Cloudflare → tu Worker → Observability / Logs (nunca incluye la key).
+      const detail = (await res.text().catch(() => '')).slice(0, 600);
+      console.log('Gemini error', model, res.status, detail);
+      const bad = /API_KEY_INVALID|API key not valid|API key expired/i.test(detail);
+      const region = /location is not supported|not available in your country/i.test(detail);
+      const code = bad ? 'BAD_KEY' : region ? 'REGION' : 'UPSTREAM_' + res.status;
+      return { error: code, status: 502 };
+    }
     const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
     return { text };
