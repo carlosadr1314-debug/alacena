@@ -1,6 +1,6 @@
 // Service worker: permite abrir la app sin internet (excepto la IA).
 // Sube el número de versión cada vez que publiques cambios.
-const CACHE = 'alacena-v9';
+const CACHE = 'alacena-v10';
 const FILES = [
   './',
   './index.html',
@@ -19,6 +19,7 @@ const FILES = [
   './js/data/ingredients.js',
   './js/data/recipes.js',
   './js/data/recipes-extra.js',
+  './js/data/recipes-extra2.js',
   './assets/icon.svg',
   './assets/icon-192.png',
   './assets/icon-512.png',

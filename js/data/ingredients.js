@@ -46,6 +46,11 @@ const RAW = [
   ['camote', 'Camote', 'verdura', 'alacena', 'veg carb'],
   ['elote', 'Elote / granos de elote', 'verdura', 'congelador', 'veg carb'],
   ['chicharo', 'Chícharos', 'verdura', 'congelador', 'veg carb fodmap'],
+  ['chayote', 'Chayote', 'verdura', 'refri', 'veg'],
+  ['jicama', 'Jícama', 'verdura', 'refri', 'veg'],
+  ['rabano', 'Rábanos', 'verdura', 'refri', 'veg'],
+  ['setas', 'Setas', 'verdura', 'refri', 'veg'],
+  ['calabaza_castilla', 'Calabaza de Castilla', 'verdura', 'alacena', 'veg carb'],
   ['verduras_congeladas', 'Mezcla de verduras congeladas', 'verdura', 'congelador', 'veg'],
 
   // Frutas
@@ -104,7 +109,7 @@ const RAW = [
 
   // Leches vegetales
   ['leche_almendra', 'Bebida de almendra sin azúcar', 'lacteo', 'refri', 'nut'],
-  ['leche_soya', 'Bebida de soya sin azúcar', 'lacteo', 'refri', 'soy'],
+  ['leche_soya', 'Bebida de soya sin azúcar', 'lacteo', 'refri', 'soy fodmap'],
 
   // Granos y harinas
   ['tortilla_maiz', 'Tortillas de maíz', 'grano', 'refri', 'carb wholegrain'],
@@ -126,6 +131,9 @@ const RAW = [
   ['lenteja', 'Lentejas', 'legumbre', 'alacena', 'legume carb fodmap'],
   ['garbanzo', 'Garbanzos', 'legumbre', 'alacena', 'legume carb fodmap'],
   ['edamame', 'Edamame', 'legumbre', 'congelador', 'legume soy'],
+  ['garbanzo_lata', 'Garbanzos de lata (enjuagados)', 'legumbre', 'alacena', 'legume carb'],
+  ['lenteja_lata', 'Lentejas de lata (enjuagadas)', 'legumbre', 'alacena', 'legume carb'],
+  ['soya_texturizada', 'Soya texturizada', 'legumbre', 'alacena', 'soy legume fodmap leanprotein'],
   ['hummus', 'Hummus', 'legumbre', 'refri', 'legume carb fodmap'],
 
   // Grasas, nueces y semillas
@@ -139,6 +147,9 @@ const RAW = [
   ['linaza', 'Linaza molida', 'grasa', 'alacena', 'healthyfat'],
   ['pepita', 'Pepitas de calabaza', 'grasa', 'alacena', 'healthyfat'],
   ['aceituna', 'Aceitunas', 'grasa', 'alacena', 'olive sodium'],
+  ['ajonjoli', 'Ajonjolí / tahini', 'grasa', 'alacena', 'healthyfat'],
+  ['aceite_ajo', 'Aceite infusionado con ajo', 'grasa', 'alacena', 'olive healthyfat'],
+  ['leche_coco', 'Leche de coco (lata)', 'lacteo', 'alacena', 'satfat'],
   ['coco_rallado', 'Coco rallado sin azúcar', 'grasa', 'alacena', 'satfat'],
 
   // Condimentos y otros

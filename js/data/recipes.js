@@ -4,6 +4,7 @@
 // La compatibilidad con cada dieta se calcula sola a partir de los ingredientes.
 
 import { EXTRA_RECIPES } from './recipes-extra.js';
+import { EXTRA_RECIPES_2 } from './recipes-extra2.js';
 
 const R = (id, name, meals, time, kcal, p, c, f, ing, steps, extra = {}) => ({
   id, name, meals, time, kcal, p, c, f, servings: 1,
@@ -414,6 +415,6 @@ const BASE_RECIPES = [
      'Sirve con salsa verde.']),
 ];
 
-export const RECIPES = [...BASE_RECIPES, ...EXTRA_RECIPES];
+export const RECIPES = [...BASE_RECIPES, ...EXTRA_RECIPES, ...EXTRA_RECIPES_2];
 
 export const RECIPE_BY_ID = Object.fromEntries(RECIPES.map((r) => [r.id, r]));

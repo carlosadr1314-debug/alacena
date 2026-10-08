@@ -101,9 +101,16 @@ export function blockingIngredients(recipe, profile) {
 }
 
 // ¿El usuario tiene este ingrediente?
+// Ingredientes que cuentan como el mismo en la despensa
+const EQUIV = {
+  garbanzo_lata: ['garbanzo'], garbanzo: ['garbanzo_lata'],
+  lenteja_lata: ['lenteja'], lenteja: ['lenteja_lata'],
+};
+
 export function hasIngredient(item, state = getState()) {
   if (ING[item.id]?.flags.has('staple')) return true;
   if (item.id && state.pantry.includes(item.id)) return true;
+  if (item.id && EQUIV[item.id]?.some((e) => state.pantry.includes(e))) return true;
   const n = norm(item.name || ING[item.id]?.name || '');
   if (!n) return false;
   return state.customPantry.some((c) => {

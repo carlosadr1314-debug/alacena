@@ -26,7 +26,8 @@ const $app = document.getElementById('app');
 const ui = {
   tab: 'hoy',
   ob: { step: 0, name: '', diet: null, vegan: false, mealsPerDay: 3, fastStart: '12:00', fastHours: 8, pantry: new Set(), dietOpen: null, nameError: '' },
-  recipes: { meal: null, onlyReady: false, query: '' },
+  recipes: { meal: null, avail: 'all', query: '' },
+  slotAll: false,
   pantry: { loc: 'all', query: '', view: 'tengo' },
   planDay: null,
   planView: 'dias',
@@ -363,15 +364,32 @@ function floatXp(anchor, xp) {
 // Snacks para alcanzar la meta de calorías del día
 function openSnackBoost() {
   const tg = macroTargets();
-  const left = Math.max(0, Math.round(tg.kcal - dayTotals(today()).kcal));
+  const tot = dayTotals(today());
+  const left = Math.max(0, Math.round(tg.kcal - tot.kcal));
   const target = Math.min(left, 350);
+  // Lo que falta de cada macro (en kcal) según los objetivos de la dieta
+  const gap = { p: Math.max(0, tg.p - tot.p) * 4, c: Math.max(0, tg.c - tot.c) * 4, f: Math.max(0, tg.f - tot.f) * 9 };
+  const gapSum = gap.p + gap.c + gap.f || 1;
+  const want = { p: gap.p / gapSum, c: gap.c / gapSum, f: gap.f / gapSum };
+  const main = Object.entries(want).sort((a, b) => b[1] - a[1])[0][0];
+  const label = { p: 'proteína', c: 'carbohidratos', f: 'grasas saludables' };
   const list = rankRecipes({ mealType: 'snack', seed: today() })
-    .map((x) => ({ ...x, diff: Math.abs(x.recipe.kcal - target) + (1 - x.match.ratio) * 400 }))
+    .map((x) => {
+      const r = x.recipe;
+      const kc = r.p * 4 + r.c * 4 + r.f * 9 || 1;
+      const share = { p: (r.p * 4) / kc, c: (r.c * 4) / kc, f: (r.f * 9) / kc };
+      const macroDiff = Math.abs(share.p - want.p) + Math.abs(share.c - want.c) + Math.abs(share.f - want.f);
+      return { ...x, diff: Math.abs(r.kcal - target) + macroDiff * 250 + (1 - x.match.ratio) * 300 };
+    })
     .sort((a, b) => a.diff - b.diff)
     .slice(0, 6);
+  const diet = getDiet(S().profile.diet);
   const body = `<div class="stack">
-    <div class="speech">${mascot('happy', 'sm')}<div class="bubble"><span class="tip-prefix">Valita aconseja:</span> te faltan <b class="num">${left} kcal</b>. Estos snacks de tu dieta te acercan a tu meta.</div></div>
-    <div class="stack-sm">${list.map((x) => recipeCard(x.recipe, 'extra', x.match)).join('') || emptyRecipes()}</div>
+    <div class="speech">${mascot('happy', 'sm')}<div class="bubble"><span class="tip-prefix">Valita aconseja:</span> te faltan <b class="num">${left} kcal</b>. Para tu dieta ${esc(diet.name)} te conviene sumar sobre todo <b>${label[main]}</b>; estos snacks te ayudan.</div></div>
+    <div class="snack-gap">
+      ${[['p', 'Proteína'], ['c', 'Carbs'], ['f', 'Grasa']].map(([k, l]) => `<div><b class="num">${Math.round(gap[k] / (k === 'f' ? 9 : 4))} g</b><small>${l} por cubrir</small></div>`).join('')}
+    </div>
+    <div class="stack-sm">${list.map((x) => recipeCard(x.recipe, 'extra', x.match, 'snack')).join('') || emptyRecipes()}</div>
     <p class="tiny muted center">Los snacks extra suman a tus calorías y dan +${XP.extra} XP. No cuentan como comida de tu ruta.</p>
   </div>`;
   openSheet('<h2>Snacks para tu meta</h2>', body);
@@ -633,7 +651,7 @@ function fastingCard() {
   </div>`;
 }
 
-function openSlotSheet(slotId) {
+function openSlotSheet(slotId, showAll = false) {
   const s = S();
   const slot = getSlots(s.profile.mealsPerDay).find((x) => x.id === slotId);
   if (!slot) return;
@@ -647,15 +665,19 @@ function openSlotSheet(slotId) {
     body = `<div class="empty">${mascot('cheer', 'sm')}<p><b>Ya registraste tu ${slot.name.toLowerCase()}.</b><br><span class="muted">${esc(r?.name || '')} · +${entry.xp} XP</span></p>
       <button class="btn btn-ghost btn-sm" data-act="undo-meal" data-slot="${slotId}">Deshacer registro</button></div>`;
   } else {
-    const ranked = rankRecipes({ mealType: slot.type, seed: today() + slotId }).filter((x) => x.recipe.id !== planned?.id).slice(0, 4);
+    const all = rankRecipes({ mealType: slot.type, seed: today() + slotId }).filter((x) => x.recipe.id !== planned?.id);
+    const ranked = showAll ? all : all.slice(0, 4);
+    const typeName = { desayuno: 'desayuno', comida: 'comida', cena: 'cena', snack: 'snack' }[slot.type];
     body = `
-      ${planned ? `<p class="slot-label" style="margin:4px 0 8px">De tu plan</p>${recipeCard(planned, slotId)}` : ''}
-      <p class="slot-label" style="margin:16px 0 8px">Ideas con lo que tienes</p>
-      <div class="stack-sm">${ranked.map((x) => recipeCard(x.recipe, slotId, x.match)).join('') || emptyRecipes()}</div>
+      ${planned ? `<p class="slot-label" style="margin:4px 0 8px">De tu plan</p>${recipeCard(planned, slotId, null, slot.type)}` : ''}
+      <p class="slot-label" style="margin:16px 0 8px">${showAll ? `Todas las recetas de ${typeName} (${all.length})` : 'Ideas con lo que tienes'}</p>
+      <div class="stack-sm">${ranked.map((x) => recipeCard(x.recipe, slotId, x.match, slot.type)).join('') || emptyRecipes()}</div>
+      ${!showAll && all.length > 4 ? `<button class="btn btn-ghost btn-block" style="margin-top:12px" data-act="slot-all" data-slot="${slotId}">Ver todas las de ${typeName} (${all.length})</button>
+        <p class="tiny muted center" style="margin-top:6px">Incluye las que todavía no puedes preparar con tu despensa.</p>` : ''}
       <button class="btn btn-ai btn-block" style="margin-top:16px" data-act="ai-open" data-meal="${slot.type}">${icon(canUse('ai') ? 'sparkles' : 'lock')} Crear con IA</button>
       <p class="center" style="margin-top:8px">${proBadge('ai')}</p>`;
   }
-  openSheet(`<h2>${slot.name}</h2>`, body);
+  openSheet(`<h2>${slot.name}</h2>`, body, '', { replace: showAll });
 }
 
 // ═════════════════════════ DESPENSA ═════════════════════════
@@ -754,9 +776,14 @@ function recipesScreen() {
     <div class="chips scroll" role="group" aria-label="Tiempo de comida">
       ${meals.map(([id, l]) => `<button class="chip" data-act="rec-meal" data-meal="${id ?? ''}" aria-pressed="${r.meal === id}">${l}</button>`).join('')}
     </div>
-    <div class="card toggle-row" style="padding:8px 14px">
-      <label for="only-ready"><b>Solo lo que puedo cocinar ya</b><br><span class="small muted">Sin ingredientes faltantes</span></label>
-      <span class="switch"><input type="checkbox" id="only-ready" ${r.onlyReady ? 'checked' : ''}><span></span></span>
+    <div>
+      <p class="label" id="avail-l">Ingredientes</p>
+      <div class="segmented" role="group" aria-labelledby="avail-l">
+        <button data-act="rec-avail" data-v="all" aria-pressed="${r.avail === 'all'}">Todas</button>
+        <button data-act="rec-avail" data-v="ready" aria-pressed="${r.avail === 'ready'}">Lista ya</button>
+        <button data-act="rec-avail" data-v="near" aria-pressed="${r.avail === 'near'}">Faltan 1–2</button>
+      </div>
+      <p class="field-help">${{ all: 'Todas las recetas de tu dieta, aunque te falten ingredientes.', ready: 'Solo las que puedes cocinar con lo que tienes.', near: 'Te faltan solo 1 o 2 ingredientes.' }[r.avail]}</p>
     </div>
     <button class="card pressable ai row" data-act="ai-open" data-meal="${r.meal ?? ''}" style="gap:14px">
       <span style="color:var(--ai)">${icon('sparkles', 'icon-lg')}</span>
@@ -769,22 +796,24 @@ function recipesScreen() {
 
 function recipeList() {
   const r = ui.recipes;
-  const ranked = rankRecipes({ mealType: r.meal, onlyReady: r.onlyReady, query: r.query, seed: today() });
+  let ranked = rankRecipes({ mealType: r.meal, onlyReady: r.avail === 'ready', query: r.query, seed: today() });
+  if (r.avail === 'near') ranked = ranked.filter((x) => x.match.missing.length >= 1 && x.match.missing.length <= 2);
   const saved = Object.values(S().aiRecipes);
   if (!ranked.length) return emptyRecipes();
-  return `<p class="small muted" style="margin-bottom:10px">${ranked.length} recetas compatibles con tu dieta${saved.length ? ` (incluye ${saved.length} tuyas de IA)` : ''}</p>
-    <div class="stack-sm">${ranked.map((x) => recipeCard(x.recipe, null, x.match)).join('')}</div>`;
+  const mealTxt = r.meal ? ` de ${r.meal}` : '';
+  return `<p class="small muted" style="margin-bottom:10px">${ranked.length} recetas${mealTxt} compatibles con tu dieta${saved.length ? ` (incluye ${saved.length} tuyas de IA)` : ''}</p>
+    <div class="stack-sm">${ranked.map((x) => recipeCard(x.recipe, null, x.match, r.meal)).join('')}</div>`;
 }
 
 function emptyRecipes() {
   return `<div class="empty">${mascot('think')}<p><b>No encontré recetas así</b><br><span class="muted">Prueba quitar filtros, agregar ingredientes a tu despensa o crear una con IA.</span></p></div>`;
 }
 
-function recipeCard(recipe, slotId = null, match = null) {
+function recipeCard(recipe, slotId = null, match = null, ctxMeal = null) {
   const m = match || matchInfo(recipe);
-  const type = recipe.meals[0];
+  const type = ctxMeal && recipe.meals.includes(ctxMeal) ? ctxMeal : recipe.meals[0];
   const missNames = m.missing.slice(0, 3).map(ingredientName).join(', ');
-  return `<button class="card pressable recipe-card" data-act="recipe" data-id="${recipe.id}" ${slotId ? `data-slot="${slotId}"` : ''}>
+  return `<button class="card pressable recipe-card" data-act="recipe" data-id="${recipe.id}" ${slotId ? `data-slot="${slotId}"` : ''} ${ctxMeal ? `data-meal="${ctxMeal}"` : ''}>
     <span class="recipe-thumb ${recipe.ai ? 'thumb-ai' : 'thumb-' + type}" aria-hidden="true">${icon(recipe.ai ? 'sparkles' : MEAL_ICON[type])}</span>
     <span class="recipe-body">
       <span class="recipe-name">${esc(recipe.name)}</span>
@@ -798,7 +827,7 @@ function recipeCard(recipe, slotId = null, match = null) {
 }
 
 // Detalle de receta
-function openRecipe(id, slotId = null) {
+function openRecipe(id, slotId = null, preferMeal = null) {
   const s = S();
   const r = findRecipe(id);
   if (!r) return toast('No encontré esa receta.');
@@ -811,7 +840,9 @@ function openRecipe(id, slotId = null) {
     ? { id: slotId === 'extra' ? 'extra_' + Date.now().toString(36) : slotId, name: 'Snack extra', extra: true }
     : slotId
       ? slots.find((x) => x.id === slotId)
-      : slots.find((x) => r.meals.includes(x.type) && !doneIds.has(x.id)) || slots.find((x) => !doneIds.has(x.id));
+      : (preferMeal && r.meals.includes(preferMeal)
+        ? slots.find((x) => x.type === preferMeal && !doneIds.has(x.id)) || slots.find((x) => x.type === preferMeal)
+        : null) || slots.find((x) => r.meals.includes(x.type) && !doneIds.has(x.id)) || slots.find((x) => r.meals.includes(x.type));
   const slotDone = targetSlot && doneIds.has(targetSlot.id);
   const heroColor = r.ai ? 'var(--ai)' : { desayuno: '#B5600A', snack: '#26774A', comida: '#C2410C', cena: '#3D4CC0' }[type];
   const saved = r.ai && s.aiRecipes[r.id];
@@ -864,7 +895,10 @@ function openRecipe(id, slotId = null) {
 
   let foot;
   if (!targetSlot || slotDone) {
-    foot = `<button class="btn btn-block" disabled>${targetSlot ? `Ya registraste tu ${targetSlot.name.toLowerCase()}` : 'Ya completaste todas tus comidas de hoy'}</button>`;
+    // No hay un tiempo de comida libre para esta receta: se puede registrar como snack extra
+    const why = targetSlot ? `Ya registraste tu ${targetSlot.name.toLowerCase()} de hoy.` : `Esta receta es de ${r.meals.join(' / ')} y no está en tu día.`;
+    foot = `<button class="btn btn-ghost btn-block" data-act="recipe" data-id="${r.id}" data-slot="extra">${icon('plus', 'icon-sm')} Registrar como snack extra +${XP.extra} XP</button>
+      <p class="tiny muted center" style="margin-top:8px">${why}</p>`;
   } else {
     const bonus = m.missing.length === 0 ? XP.perfectMatch : 0;
     const gain = targetSlot.extra ? XP.extra : XP.meal + bonus;
@@ -1647,8 +1681,10 @@ const actions = {
   'pantry-remove-custom': (el) => { update((s) => { s.customPantry = s.customPantry.filter((x) => x.id !== el.dataset.id); }); rerenderMain(); },
 
   // Recetas
+  'rec-avail': (el) => { ui.recipes.avail = el.dataset.v; rerenderMain(); },
+  'slot-all': (el) => openSlotSheet(el.dataset.slot, true),
   'rec-meal': (el) => { ui.recipes.meal = el.dataset.meal || null; rerenderMain(); },
-  recipe: (el) => openRecipe(el.dataset.id, el.dataset.slot || null),
+  recipe: (el) => openRecipe(el.dataset.id, el.dataset.slot || null, el.dataset.meal || null),
   cook: (el) => {
     const recipe = findRecipe(el.dataset.id);
     const missing = recipe ? matchInfo(recipe).missing : [];
@@ -1987,7 +2023,6 @@ document.addEventListener('change', (e) => {
     return;
   }
   switch (t.id) {
-    case 'only-ready': ui.recipes.onlyReady = t.checked; document.getElementById('recipe-list').innerHTML = recipeList(); break;
     case 'scan-input': if (t.files?.[0]) { if (!t.files[0].type.startsWith('image/')) { ui.scan.error = 'Ese archivo no es una imagen.'; renderScanSheet(); } else runScan(t.files[0]); } break;
     case 'kcal-goal': { const v = Math.min(5000, Math.max(1000, Number(t.value) || 2000)); update((s) => { s.profile.kcalGoal = v; }); rerenderMain(); toast('Meta actualizada'); break; }
     case 'fam-on': update((s) => { s.family.enabled = t.checked; s.plan = null; s.shopping = []; }); rerenderMain(); toast(t.checked ? 'Modo familiar activado. Genera un plan nuevo.' : 'Modo familiar desactivado'); break;

@@ -6,7 +6,7 @@ App web pensada para teléfono que te ayuda a seguir una dieta cocinando con lo 
 
 - **12 dietas con respaldo científico**: Mediterránea, DASH, Keto, Vegetariana/Vegana, Flexitariana, Nórdica, Portfolio, MIND, Baja en calorías, Baja en FODMAP, Ayuno intermitente y Plato del Bien Comer.
 - **Despensa**: el usuario registra lo que tiene en refrigerador, alacena y congelador.
-- **Recetas**: 68 recetas integradas en español. Se filtran solas según la dieta y se ordenan por lo que ya tienes.
+- **Recetas**: 274 recetas integradas en español (al menos 40 por tiempo de comida en cada dieta). Se filtran solas según la dieta y se ordenan por lo que ya tienes.
 - **Plan semanal**: 7 días de recetas y una lista del súper con lo que falta.
 - **IA**: crea recetas nuevas con Google Gemini a través de un proxy gratuito en Cloudflare que guarda tu key.
 - **Módulos Pro** listos para cobrar más adelante (IA, escaneo con foto, plan de 7 días, lista semanal, protector de racha, calorías y macros, plan familiar); durante la beta están desbloqueados.
