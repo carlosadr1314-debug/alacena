@@ -23,3 +23,6 @@ export const PREMIUM = {
   price: '$59 MXN/mes', // precio de referencia que se muestra en la pantalla Pro
   features: ['ai', 'scan', 'weekPlan', 'weekShopping', 'streakFreeze', 'nutrition', 'family', 'customDiet'],
 };
+
+// Módulos apagados por ahora (no se muestran ni se usan). Quita 'family' de la lista para reactivar el plan familiar.
+export const HIDDEN_FEATURES = ['family'];

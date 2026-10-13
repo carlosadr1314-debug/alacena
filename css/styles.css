@@ -678,3 +678,5 @@ textarea.input { resize: vertical; min-height: 88px; font-family: inherit; }
 .portion-preview .macro b { font-size: 18px; }
 .portion-preview .macro small { color: var(--ink-2); font-size: 12px; }
 .xp-float.neg { color: var(--err); }
+.portion-ref { display: grid; gap: 2px; background: var(--surface-2); border-radius: var(--r-md); padding: 10px 14px; }
+.portion-ref span { font-size: 14px; color: var(--ink-2); }

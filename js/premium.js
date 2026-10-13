@@ -2,10 +2,10 @@
 // Hoy (beta) todo está desbloqueado. Cuando actives el cobro, cambia PREMIUM.enforce
 // a true en config.js y conecta setPro() con tu sistema de pagos.
 
-import { PREMIUM } from './config.js';
+import { PREMIUM, HIDDEN_FEATURES } from './config.js';
 import { getState, update } from './store.js';
 
-export const PRO_FEATURES = {
+const ALL_PRO_FEATURES = {
   ai: { name: 'Recetas con IA', desc: 'Recetas nuevas e ilimitadas con lo que tienes en tu despensa.', icon: 'sparkles' },
   weekPlan: { name: 'Plan de 7 días', desc: 'Planea toda tu semana, no solo el día de hoy.', icon: 'calendar' },
   weekShopping: { name: 'Lista del súper semanal', desc: 'Todo lo que te falta para la semana en una sola lista.', icon: 'cart' },
@@ -15,6 +15,9 @@ export const PRO_FEATURES = {
   customDiet: { name: 'Dietas propias sin límites', desc: 'Hasta 5 dietas tuyas, todas las restricciones, ingredientes que no comes y límite de calorías por comida.', icon: 'sliders' },
   family: { name: 'Plan familiar', desc: 'Agrega a tu familia con su propia dieta y planea recetas que les sirvan a todos.', icon: 'users' },
 };
+// Lo que se muestra en la pantalla Pro (sin los módulos apagados)
+export const PRO_FEATURES = Object.fromEntries(Object.entries(ALL_PRO_FEATURES).filter(([id]) => !HIDDEN_FEATURES.includes(id)));
+export const isHidden = (feature) => HIDDEN_FEATURES.includes(feature);
 
 export function isProFeature(feature) {
   return PREMIUM.features.includes(feature);

@@ -1,6 +1,6 @@
 // Service worker: permite abrir la app sin internet (excepto la IA).
 // Sube el número de versión cada vez que publiques cambios.
-const CACHE = 'valita-v17';
+const CACHE = 'valita-v18';
 const FILES = [
   './',
   './index.html',

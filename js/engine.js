@@ -5,7 +5,7 @@ import { RECIPES } from './data/recipes.js';
 import { ING, norm } from './data/ingredients.js';
 import { getDiet } from './data/diets.js';
 import { getState, addDays } from './store.js';
-import { canUse } from './premium.js';
+import { canUse, isHidden } from './premium.js';
 
 // Tiempos de comida según cuántas comidas al día eligió el usuario
 export function getSlots(mealsPerDay = 3) {
@@ -70,6 +70,7 @@ export function isCompatible(recipe, profile, mealType = null) {
 // ── Plan familiar ──
 // Perfiles para los que se cocina: tú + tu familia (si el modo familiar está activo)
 export function familyActive(state = getState()) {
+  if (isHidden('family')) return false;
   return !!(state.family?.enabled && state.family.members.length && canUse('family'));
 }
 

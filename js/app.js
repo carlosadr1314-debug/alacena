@@ -15,11 +15,11 @@ import {
   todayChallenge, waterToday, setWater, WATER_GOAL, waterStatus, WATER_FREE_REMOVALS,
 } from './game.js';
 import { aiConfigured, generateRecipes, aiErrorMessage, pingAI, aiUsesLeft, compressImage, scanPantry, sendSuggestion } from './ai.js';
-import { canUse, isProFeature, isOpenBeta, PRO_FEATURES } from './premium.js';
+import { canUse, isProFeature, isOpenBeta, PRO_FEATURES, isHidden } from './premium.js';
 import { PREMIUM } from './config.js';
 import { icon, mascot, MEAL_ICON } from './icons.js';
 import { recommendDiets, currentDietNote } from './recommend.js';
-import { portionModes, portionFactor, portionLabel } from './portion.js';
+import { portionModes, portionFactor, portionLabel, portionInfo } from './portion.js';
 
 const $app = document.getElementById('app');
 
@@ -854,7 +854,8 @@ function openRecipe(id, slotId = null, preferMeal = null) {
     <div class="recipe-hero" style="background:${heroColor}">
       <div class="row" style="gap:6px;flex-wrap:wrap">${r.meals.map((t) => `<span class="badge">${t[0].toUpperCase() + t.slice(1)}</span>`).join('')}${r.ai ? '<span class="badge">Creada con IA</span>' : ''}</div>
       <h2>${esc(r.name)}</h2>
-      <p style="margin-top:6px;opacity:.95;font-weight:700" class="row">${icon('clock', 'icon-sm')} ${r.time} min · ${r.servings || 1} porción</p>
+      <p style="margin-top:6px;opacity:.95;font-weight:700" class="row">${icon('clock', 'icon-sm')} ${r.time} min · 1 porción</p>
+      <p class="small" style="margin-top:2px;opacity:.9">1 porción = ${esc(portionInfo(r).text)}</p>
     </div>
     <div class="macros">
       <div class="macro"><b class="num">${r.kcal}</b><small>kcal</small></div>
@@ -917,7 +918,7 @@ function openRecipe(id, slotId = null, preferMeal = null) {
 function openPortionSheet(recipe, slotId) {
   const modes = portionModes(recipe);
   const prev = ui.portion && ui.portion.recipeId === recipe.id ? ui.portion : null;
-  ui.portion = { recipeId: recipe.id, slotId, modes, mode: prev?.mode || 'portion', value: prev?.value ?? 1 };
+  ui.portion = { recipeId: recipe.id, slotId, modes, mode: modes.some((m) => m.id === prev?.mode) ? prev.mode : 'portion', value: prev?.value ?? 1 };
   renderPortionSheet();
 }
 
@@ -932,7 +933,7 @@ function portionPreview() {
     <div class="macro"><b class="num">${Math.round(recipe.c * f)}g</b><small>carbs</small></div>
     <div class="macro"><b class="num">${Math.round(recipe.f * f)}g</b><small>grasa</small></div>
   </div>
-  <p class="tiny muted center">${mode.id === 'mass' ? `1 porción ≈ ${mode.per} ${mode.unit} (aproximado). ` : mode.id === 'pieces' ? `La receta lleva ${Number.isInteger(mode.per) ? mode.per : mode.per.toFixed(1)} ${mode.per === 1 ? mode.unit : mode.units} por porción. ` : ''}Equivale a ${String(Math.round(f * 100) / 100).replace('.', ',')} ${f === 1 ? 'porción' : 'porciones'}.</p>`;
+  <p class="tiny muted center">Equivale a ${String(Math.round(f * 100) / 100).replace('.', ',')} ${f === 1 ? 'porción' : 'porciones'}. Las cantidades son aproximadas.</p>`;
 }
 
 function renderPortionSheet() {
@@ -945,7 +946,7 @@ function renderPortionSheet() {
   const gain = isExtra ? XP.extra : XP.meal + (m.missing.length === 0 ? XP.perfectMatch : 0);
   const body = `<div class="stack">
     <div class="speech">${mascot('happy', 'sm')}<div class="bubble"><b>¿Cuánto comiste?</b><br>Así tus calorías del día quedan exactas.</div></div>
-    <p class="small muted" style="margin:0">${esc(recipe.name)}</p>
+    <div class="portion-ref"><b>${esc(recipe.name)}</b><span>1 porción = ${esc(portionInfo(recipe).text)}</span></div>
     <div>
       <p class="label" id="pm-l">Medir por</p>
       <div class="segmented" role="group" aria-labelledby="pm-l">
@@ -1362,6 +1363,7 @@ function kcalGoalCard() {
 }
 
 function familySection() {
+  if (isHidden('family')) return '';
   const s = S();
   const fam = s.family;
   const f = ui.famForm;
