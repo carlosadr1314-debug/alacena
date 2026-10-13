@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// Proxy de IA para Alacena — Cloudflare Worker (plan gratuito)
+// Proxy de IA para Valita — Cloudflare Worker (plan gratuito)
 //
 // Guarda TU API key de Gemini como secreto del lado del servidor,
 // así nunca queda expuesta en el código público de GitHub Pages.
@@ -12,7 +12,9 @@
 //   ALLOWED_ORIGINS  (Text)    https://TU_USUARIO.github.io,http://localhost:8080
 //   GEMINI_MODEL     (Text, opcional) p. ej. gemini-flash-latest
 //   ADMIN_TOKEN      (Secret)  Contraseña larga para ver las sugerencias de dietas
-// Binding opcional:
+//   DAILY_LIMIT      (Text, opcional) usos de IA por IP al día (40 si no se pone)
+// Bindings:
+//   RATE_LIMITER     (Rate limiter, opcional) 8 solicitudes por minuto por IP
 //   SUGGESTIONS      (KV namespace) donde se guardan las dietas que sugieren los usuarios
 //   Para verlas: https://TU-WORKER.workers.dev/sugerencias?token=TU_ADMIN_TOKEN
 //
@@ -99,6 +101,17 @@ async function underLimit(env, ip) {
   arr.push(now);
   hits.set(ip, arr);
   if (hits.size > 5000) hits.clear();
+  return true;
+}
+
+// Tope diario por IP (DAILY_LIMIT, por defecto 40). Si no hay KV conectado, no se aplica.
+async function underDailyLimit(env, ip) {
+  if (!env.SUGGESTIONS) return true;
+  const max = Number(env.DAILY_LIMIT) || 40;
+  const key = `rl:${new Date().toISOString().slice(0, 10)}:${ip}`;
+  const n = Number(await env.SUGGESTIONS.get(key)) || 0;
+  if (n >= max) return false;
+  await env.SUGGESTIONS.put(key, String(n + 1), { expirationTtl: 60 * 60 * 48 });
   return true;
 }
 
@@ -233,6 +246,11 @@ export default {
       if (!item.name) return json({ error: 'BAD_REQUEST' }, 400, origin);
       await env.SUGGESTIONS.put(`sug:${item.receivedAt}:${crypto.randomUUID().slice(0, 8)}`, JSON.stringify(item));
       return json({ ok: true }, 200, origin);
+    }
+
+    // Tope diario por IP para las acciones que gastan cuota de Gemini (usa el mismo KV).
+    if ((body.action === 'recipes' || body.action === 'scan') && !(await underDailyLimit(env, ip))) {
+      return json({ error: 'DAILY_LIMIT' }, 429, origin);
     }
 
     let result;

@@ -1,4 +1,4 @@
-# Alacena (nombre provisional)
+# Valita
 
 > **¿Primera vez?** Sigue [GUIA-PUESTA-EN-MARCHA.md](GUIA-PUESTA-EN-MARCHA.md) paso a paso.
 
@@ -10,7 +10,7 @@ App web pensada para teléfono que te ayuda a seguir una dieta cocinando con lo 
 - **Plan semanal**: 7 días de recetas y una lista del súper con lo que falta.
 - **IA**: crea recetas nuevas con Google Gemini a través de un proxy gratuito en Cloudflare que guarda tu key.
 - **Módulos Pro** listos para cobrar más adelante (IA, escaneo con foto, plan de 7 días, lista semanal, protector de racha, calorías y macros, plan familiar); durante la beta están desbloqueados.
-- **Estilo Duolingo**: ruta del día, reto diario, vasos de agua, racha, XP y niveles, 12 logros y la mascota *Valita* (tócala y te da consejos).
+- **Estilo Duolingo**: ruta del día, reto diario, vasos de agua, racha, XP y niveles, 12 logros y la mascota *Valita*, que da nombre a la app (tócala y te da consejos).
 - **Dietas propias** y **sugerencias de dietas** de los usuarios (se guardan en Cloudflare KV; las revisas en `/sugerencias?token=…`).
 - **Instalable (PWA)** y funciona sin internet, excepto la IA.
 
@@ -47,7 +47,7 @@ Para verla como en el teléfono, abre las herramientas de desarrollador del nave
 5. En 1 o 2 minutos queda publicada en `https://TU_USUARIO.github.io/alacena/`.
 6. Abre ese link en tu teléfono. En Chrome (Android) usa el menú → *Instalar app*; en Safari (iPhone) usa Compartir → *Agregar a inicio*.
 
-Cada vez que hagas cambios, súbelos con `git push` y **sube la versión en `sw.js`** (`alacena-v1` → `alacena-v2`) para que los teléfonos descarguen la versión nueva.
+Cada vez que hagas cambios, súbelos con `git push` y **sube la versión en `sw.js`** (`valita-v16` → `valita-v17`) para que los teléfonos descarguen la versión nueva.
 
 > El archivo `.nojekyll` ya va incluido para que GitHub Pages sirva los archivos tal cual.
 

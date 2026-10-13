@@ -1,6 +1,6 @@
 // Service worker: permite abrir la app sin internet (excepto la IA).
 // Sube el número de versión cada vez que publiques cambios.
-const CACHE = 'alacena-v15';
+const CACHE = 'valita-v17';
 const FILES = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const FILES = [
   './js/config.js',
   './js/premium.js',
   './js/recommend.js',
+  './js/portion.js',
   './js/store.js',
   './js/engine.js',
   './js/game.js',

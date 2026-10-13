@@ -666,3 +666,15 @@ textarea.input { resize: vertical; min-height: 88px; font-family: inherit; }
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
   .confetti { display: none; }
 }
+
+/* Porciones */
+.stepper { display: grid; grid-template-columns: 52px 1fr 52px; gap: 10px; align-items: center; }
+.stepper .btn-icon { width: 52px; height: 52px; font-size: 26px; font-weight: 800; }
+.stepper-val { display: flex; align-items: center; gap: 8px; justify-content: center; background: var(--surface-2); border-radius: var(--r-md); padding: 4px 12px; min-height: 52px; }
+.stepper-val .input { width: 96px; text-align: center; font-size: 22px; font-weight: 800; background: transparent; border: 0; box-shadow: none; padding: 6px 0; }
+.stepper-val span { font-weight: 700; color: var(--ink-2); }
+.portion-preview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.portion-preview .macro { background: var(--surface); border: 2px solid var(--line); border-radius: var(--r-md); padding: 10px 4px; text-align: center; display: grid; }
+.portion-preview .macro b { font-size: 18px; }
+.portion-preview .macro small { color: var(--ink-2); font-size: 12px; }
+.xp-float.neg { color: var(--err); }

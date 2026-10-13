@@ -74,22 +74,48 @@ export function waterToday(state = getState()) {
 }
 
 // Toca un vaso: llena hasta ese vaso (o lo vacía si ya era el último lleno)
+// Agua: cada vaso da XP y quitarlo la resta. Si el usuario quita vasos muchas veces en el día
+// (WATER_FREE_REMOVALS), se le avisa: desde ahí agregar ya no da XP y quitar resta el doble.
+export const WATER_FREE_REMOVALS = 4;
+export function waterStatus(state = getState()) {
+  const w = state.waterLog?.[today()] || {};
+  return { removals: w.removals || 0, warned: !!w.warned };
+}
 export function setWater(n) {
-  const res = { challenge: false, xp: 0 };
+  const res = { challenge: false, xp: 0, warning: false };
   update((s) => {
     const t = today();
     s.water = s.water || {};
-    s.waterXp = s.waterXp || {};
+    s.waterLog = s.waterLog || {};
     const cur = s.water[t] || 0;
     const next = Math.max(0, Math.min(WATER_GOAL, n === cur ? n - 1 : n));
+    if (next === cur) return;
+    // estado del día (migra el contador anterior de vasos con XP)
+    const w = s.waterLog[t] || (s.waterLog[t] = { credited: Math.min(s.waterXp?.[t] || 0, cur), goal: (s.waterXp?.[t] || 0) >= WATER_GOAL, removals: 0, warned: false });
     s.water[t] = next;
-    // XP solo por vasos nuevos del día (quitar y volver a poner no da más XP)
-    const awarded = s.waterXp[t] || 0;
-    if (next > awarded) {
-      res.xp = (next - awarded) * XP.water + (next === WATER_GOAL ? XP.waterGoal : 0);
-      s.waterXp[t] = next;
-      s.xp += res.xp;
+    let delta = 0;
+    if (next > cur) {
+      if (!w.warned) {
+        const newGlasses = Math.max(0, next - Math.max(cur, w.credited));
+        delta += newGlasses * XP.water;
+        w.credited = Math.max(w.credited, next);
+        if (next === WATER_GOAL && !w.goal) { delta += XP.waterGoal; w.goal = true; }
+      }
+    } else {
+      const removed = cur - next;
+      if (w.warned) {
+        delta -= removed * XP.water * 2; // castigo: el doble
+      } else if (w.credited > next) {
+        delta -= (w.credited - next) * XP.water;
+      }
+      w.credited = Math.min(w.credited, next);
+      if (w.goal && next < WATER_GOAL) { delta -= XP.waterGoal; w.goal = false; }
+      w.removals += 1;
+      if (!w.warned && w.removals >= WATER_FREE_REMOVALS) { w.warned = true; res.warning = true; }
     }
+    const before = s.xp;
+    s.xp = Math.max(0, s.xp + delta);
+    res.xp = s.xp - before;
     res.challenge = evalChallenge(s);
   });
   return res;
@@ -171,7 +197,7 @@ export function refreshAchievements() {
 }
 
 // Registrar una comida. Devuelve el resumen para la celebración.
-export function logMeal(slotId, recipeId) {
+export function logMeal(slotId, recipeId, portion = null) {
   const t = today();
   const recipe = findRecipe(recipeId);
   const result = { xp: 0, streakUp: false, streak: 0, perfectDay: false, unlocked: [], levelUp: null };
@@ -190,6 +216,13 @@ export function logMeal(slotId, recipeId) {
       // copia de nutrientes para el seguimiento (aunque la receta de IA no se guarde)
       name: recipe?.name || '', kcal: recipe?.kcal || 0, p: recipe?.p || 0, c: recipe?.c || 0, f: recipe?.f || 0,
     };
+    // Cuánto se comió: escala calorías y macros (las XP no cambian)
+    const factor = portion && portion.factor > 0 ? Math.min(portion.factor, 10) : 1;
+    if (factor !== 1) {
+      for (const k of ['kcal', 'p', 'c', 'f']) entry[k] = Math.round(entry[k] * factor);
+    }
+    entry.factor = Math.round(factor * 100) / 100;
+    if (portion?.label) entry.portion = String(portion.label).slice(0, 40);
     s.log[t].push(entry);
 
     // Racha

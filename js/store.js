@@ -3,6 +3,7 @@
 
 import { registerCustomDiets } from './data/diets.js';
 
+// Se conserva el nombre anterior de la clave para no borrar el progreso de quien ya usa la app.
 const KEY = 'alacena.state.v1';
 
 export const DEFAULT_STATE = {
@@ -36,7 +37,8 @@ export const DEFAULT_STATE = {
   suggestions: [],     // dietas sugeridas por el usuario [{id, name, why, source, date, status}]
   water: {},           // { 'YYYY-MM-DD': vasos }
   challenges: {},      // { 'YYYY-MM-DD': true } retos del día completados
-  waterXp: {},         // { 'YYYY-MM-DD': vasos que ya dieron XP }
+  waterXp: {},         // (versión anterior) vasos que ya dieron XP
+  waterLog: {},        // { 'YYYY-MM-DD': { credited, goal, removals, warned } }
 };
 
 let state = load();

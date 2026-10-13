@@ -100,7 +100,7 @@ Al terminar vas a tener:
    export const AI_ENDPOINT = 'https://alacena-ia.TU-CUENTA.workers.dev';
    ```
 3. **Commit changes**.
-4. Abre `sw.js` y cambia `alacena-v3` por `alacena-v4`. Haz esto **cada vez que publiques cambios**, para que los teléfonos bajen la versión nueva.
+4. Abre `sw.js` y súbele uno al número (por ejemplo `valita-v16` → `valita-v17`). Haz esto **cada vez que publiques cambios**, para que los teléfonos bajen la versión nueva.
 5. Espera 1 o 2 minutos, abre la app y recarga.
 6. Ve a **Perfil → Herramientas de prueba → Inteligencia artificial → Probar**.
    - "¡Conexión exitosa!" → listo.

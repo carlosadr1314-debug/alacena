@@ -12,13 +12,14 @@ import {
   logMeal, undoMeal, todayLog, currentStreak, streakDoneToday, levelFromXp, levelTitle,
   ACHIEVEMENTS, refreshAchievements, cookedCount, lastWeek, XP,
   applyStreakFreezes, macroTargets, dayTotals, weekTotals, FREEZES_PER_MONTH,
-  todayChallenge, waterToday, setWater, WATER_GOAL,
+  todayChallenge, waterToday, setWater, WATER_GOAL, waterStatus, WATER_FREE_REMOVALS,
 } from './game.js';
 import { aiConfigured, generateRecipes, aiErrorMessage, pingAI, aiUsesLeft, compressImage, scanPantry, sendSuggestion } from './ai.js';
 import { canUse, isProFeature, isOpenBeta, PRO_FEATURES } from './premium.js';
 import { PREMIUM } from './config.js';
 import { icon, mascot, MEAL_ICON } from './icons.js';
 import { recommendDiets, currentDietNote } from './recommend.js';
+import { portionModes, portionFactor, portionLabel } from './portion.js';
 
 const $app = document.getElementById('app');
 
@@ -286,7 +287,7 @@ function todayScreen() {
           const cur = i === currentIdx;
           const entry = log.find((l) => l.slot === slot.id);
           const r = entry ? findRecipe(entry.recipeId) : planDay ? findRecipe(planDay.slots[slot.id]) : null;
-          const sub = done ? esc(r?.name || 'Registrada') : r ? `Plan: ${esc(r.name)}` : 'Toca para ver ideas';
+          const sub = done ? esc(r?.name || entry?.name || 'Registrada') + (entry?.portion && entry.factor !== 1 ? ` · ${esc(entry.portion)}` : '') : r ? `Plan: ${esc(r.name)}` : 'Toca para ver ideas';
           return `<div class="path-node-wrap ${cur ? 'has-start' : ''}">
             <button class="path-node ${done ? 'done' : cur ? 'current' : ''}" data-act="slot" data-slot="${slot.id}" aria-label="${slot.name}: ${done ? 'completado' : 'pendiente'}">
               ${cur ? '<span class="start-tag" aria-hidden="true">EMPEZAR</span>' : ''}
@@ -354,7 +355,8 @@ function floatXp(anchor, xp) {
   const el = document.createElement('span');
   el.className = 'xp-float num';
   el.setAttribute('aria-hidden', 'true');
-  el.textContent = `+${xp} XP`;
+  el.textContent = `${xp > 0 ? '+' : ''}${xp} XP`;
+  if (xp < 0) el.classList.add('neg');
   el.style.left = `${r.left + r.width / 2}px`;
   el.style.top = `${r.top}px`;
   document.body.appendChild(el);
@@ -580,7 +582,7 @@ function challengeCard() {
 function waterCard() {
   const n = waterToday();
   return `<div class="card">
-    <div class="row between"><b>Agua de hoy</b><span class="small muted num">${n} de ${WATER_GOAL} vasos · +${XP.water} XP c/u</span></div>
+    <div class="row between"><b>Agua de hoy</b><span class="small muted num">${n} de ${WATER_GOAL} vasos · ${waterStatus().warned ? 'sin XP hoy' : `+${XP.water} XP c/u`}</span></div>
     <div class="glasses" role="group" aria-label="Vasos de agua">
       ${Array.from({ length: WATER_GOAL }, (_, i) => `<button class="glass ${i < n ? 'full' : ''}" data-act="water" data-n="${i + 1}" aria-label="Vaso ${i + 1}${i < n ? ', tomado' : ''}" aria-pressed="${i < n}">
         <svg viewBox="0 0 24 32" aria-hidden="true"><path class="glass-water" d="M5.6 ${i < n ? 8 : 30} L18.4 ${i < n ? 8 : 30} L17 30 H7 Z"/><path class="glass-shape" d="M3 3h18l-2.6 26a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z"/></svg>
@@ -662,7 +664,7 @@ function openSlotSheet(slotId, showAll = false) {
   let body;
   if (entry) {
     const r = findRecipe(entry.recipeId);
-    body = `<div class="empty">${mascot('cheer', 'sm')}<p><b>Ya registraste tu ${slot.name.toLowerCase()}.</b><br><span class="muted">${esc(r?.name || '')} · +${entry.xp} XP</span></p>
+    body = `<div class="empty">${mascot('cheer', 'sm')}<p><b>Ya registraste tu ${slot.name.toLowerCase()}.</b><br><span class="muted">${esc(r?.name || entry.name || '')}${entry.portion ? ` · ${esc(entry.portion)}` : ''} · ${entry.kcal} kcal · +${entry.xp} XP</span></p>
       <button class="btn btn-ghost btn-sm" data-act="undo-meal" data-slot="${slotId}">Deshacer registro</button></div>`;
   } else {
     const all = rankRecipes({ mealType: slot.type, seed: today() + slotId }).filter((x) => x.recipe.id !== planned?.id);
@@ -909,6 +911,81 @@ function openRecipe(id, slotId = null, preferMeal = null) {
       <p class="tiny muted center" style="margin-top:8px">${targetSlot.extra ? 'Se suma como snack extra a tus calorías de hoy.' : `Se registra como tu ${targetSlot.name.toLowerCase()} de hoy.`}</p>`;
   }
   openSheet('', body, foot);
+}
+
+// ¿Cuánto comiste? (porciones, piezas o gramos/ml)
+function openPortionSheet(recipe, slotId) {
+  const modes = portionModes(recipe);
+  const prev = ui.portion && ui.portion.recipeId === recipe.id ? ui.portion : null;
+  ui.portion = { recipeId: recipe.id, slotId, modes, mode: prev?.mode || 'portion', value: prev?.value ?? 1 };
+  renderPortionSheet();
+}
+
+function portionPreview() {
+  const p = ui.portion;
+  const recipe = findRecipe(p.recipeId);
+  const mode = p.modes.find((m) => m.id === p.mode);
+  const f = portionFactor(mode, p.value);
+  return `<div class="portion-preview" aria-live="polite">
+    <div class="macro"><b class="num">${Math.round(recipe.kcal * f)}</b><small>kcal</small></div>
+    <div class="macro"><b class="num">${Math.round(recipe.p * f)}g</b><small>proteína</small></div>
+    <div class="macro"><b class="num">${Math.round(recipe.c * f)}g</b><small>carbs</small></div>
+    <div class="macro"><b class="num">${Math.round(recipe.f * f)}g</b><small>grasa</small></div>
+  </div>
+  <p class="tiny muted center">${mode.id === 'mass' ? `1 porción ≈ ${mode.per} ${mode.unit} (aproximado). ` : mode.id === 'pieces' ? `La receta lleva ${Number.isInteger(mode.per) ? mode.per : mode.per.toFixed(1)} ${mode.per === 1 ? mode.unit : mode.units} por porción. ` : ''}Equivale a ${String(Math.round(f * 100) / 100).replace('.', ',')} ${f === 1 ? 'porción' : 'porciones'}.</p>`;
+}
+
+function renderPortionSheet() {
+  const p = ui.portion;
+  const recipe = findRecipe(p.recipeId);
+  const mode = p.modes.find((m) => m.id === p.mode);
+  const slot = getSlots(S().profile.mealsPerDay).find((x) => x.id === p.slotId);
+  const isExtra = String(p.slotId).startsWith('extra');
+  const m = matchInfo(recipe);
+  const gain = isExtra ? XP.extra : XP.meal + (m.missing.length === 0 ? XP.perfectMatch : 0);
+  const body = `<div class="stack">
+    <div class="speech">${mascot('happy', 'sm')}<div class="bubble"><b>¿Cuánto comiste?</b><br>Así tus calorías del día quedan exactas.</div></div>
+    <p class="small muted" style="margin:0">${esc(recipe.name)}</p>
+    <div>
+      <p class="label" id="pm-l">Medir por</p>
+      <div class="segmented" role="group" aria-labelledby="pm-l">
+        ${p.modes.map((x) => `<button data-act="portion-mode" data-v="${x.id}" aria-pressed="${x.id === p.mode}">${x.label}</button>`).join('')}
+      </div>
+    </div>
+    <div class="stepper" role="group" aria-label="Cantidad">
+      <button class="btn btn-ghost btn-icon" data-act="portion-step" data-d="-1" aria-label="Menos" ${p.value <= mode.min ? 'disabled' : ''}>−</button>
+      <label class="stepper-val"><input id="portion-val" class="input num" type="number" inputmode="decimal" min="${mode.min}" max="${mode.max}" step="${mode.step}" value="${p.value}" aria-label="Cantidad en ${mode.units}"><span>${mode.id === 'portion' ? (Number(p.value) === 1 ? 'porción' : 'porciones') : mode.units}</span></label>
+      <button class="btn btn-ghost btn-icon" data-act="portion-step" data-d="1" aria-label="Más" ${p.value >= mode.max ? 'disabled' : ''}>+</button>
+    </div>
+    <div id="portion-preview">${portionPreview()}</div>
+  </div>`;
+  const foot = `<button class="btn btn-ok btn-block" data-act="portion-log">${icon('check')} Registrar +${gain} XP</button>
+    <p class="tiny muted center" style="margin-top:8px">${isExtra ? 'Se suma como snack extra a tus calorías de hoy.' : `Se registra como tu ${slot ? slot.name.toLowerCase() : 'comida'} de hoy.`}</p>`;
+  openSheet('', body, foot, { replace: true });
+}
+
+function setPortionValue(v, rerender = true) {
+  const p = ui.portion;
+  const mode = p.modes.find((m) => m.id === p.mode);
+  let n = Number(String(v).replace(',', '.'));
+  if (!Number.isFinite(n)) n = mode.def;
+  n = Math.min(mode.max, Math.max(mode.min, n));
+  p.value = Math.round(n * 100) / 100;
+  if (rerender) renderPortionSheet();
+  else {
+    const box = document.getElementById('portion-preview');
+    if (box) box.innerHTML = portionPreview();
+  }
+}
+
+// Aviso cuando el usuario quita vasos de agua muchas veces
+function waterWarning() {
+  const body = `<div class="confirm-box" role="alertdialog" aria-labelledby="ww-title" aria-describedby="ww-desc">
+    ${mascot('think')}
+    <h2 id="ww-title">Valita te avisa</h2>
+    <p id="ww-desc" class="muted">Ya quitaste vasos de agua ${WATER_FREE_REMOVALS} veces hoy. Desde ahora, <b>agregar vasos ya no dará XP</b> hoy y <b>cada vaso que quites restará el doble</b> (−${XP.water * 2} XP).</p>
+  </div>`;
+  openSheet('', body, `<button class="btn btn-block" data-act="sheet-close">Entendido</button>`, { replace: true });
 }
 
 // Confirmación cuando faltan ingredientes
@@ -1701,7 +1778,32 @@ const actions = {
     const recipe = findRecipe(el.dataset.id);
     const missing = recipe ? matchInfo(recipe).missing : [];
     if (missing.length && el.dataset.confirmed !== '1') return confirmCook(recipe, el.dataset.slot, missing);
-    const res = logMeal(el.dataset.slot, el.dataset.id);
+    if (!recipe) return;
+    openPortionSheet(recipe, el.dataset.slot);
+  },
+  'portion-mode': (el) => {
+    const p = ui.portion;
+    const from = p.modes.find((m) => m.id === p.mode);
+    const f = portionFactor(from, p.value);
+    p.mode = el.dataset.v;
+    const to = p.modes.find((m) => m.id === p.mode);
+    // conserva la misma cantidad al cambiar de medida
+    const v = to.id === 'portion' ? Math.round(f * 2) / 2 : to.per ? (to.id === 'pieces' ? Math.round(f * to.per) : Math.round((f * to.per) / to.step) * to.step) : to.def;
+    setPortionValue(v);
+  },
+  'portion-step': (el) => {
+    const p = ui.portion;
+    const mode = p.modes.find((m) => m.id === p.mode);
+    setPortionValue(Number(p.value) + Number(el.dataset.d) * mode.step);
+  },
+  'portion-log': () => {
+    const p = ui.portion;
+    const input = document.getElementById('portion-val');
+    if (input) setPortionValue(input.value, false);
+    const recipe = findRecipe(p.recipeId);
+    const mode = p.modes.find((m) => m.id === p.mode);
+    const res = logMeal(p.slotId, p.recipeId, { factor: portionFactor(mode, p.value), label: portionLabel(mode, p.value) });
+    ui.portion = null;
     closeSheet();
     rerenderMain();
     if (res.xp) celebrate(res, recipe);
@@ -1763,6 +1865,8 @@ const actions = {
     const res = setWater(n);
     rerenderMain();
     if (res.xp) floatXp(document.querySelector(`[data-act="water"][data-n="${Math.min(n, WATER_GOAL)}"]`), res.xp);
+    if (res.warning) waterWarning();
+    else if (res.xp < 0) toast(`Quitaste un vaso: ${res.xp} XP`);
     if (res.challenge) celebrateSmall('¡Reto del día completado! +10 XP');
     else if (waterToday() === WATER_GOAL && res.xp) toast(`¡Meta de agua cumplida! +${res.xp} XP`);
   },
@@ -2057,6 +2161,8 @@ document.addEventListener('input', (e) => {
     const q = norm(t.value);
     const sugg = q ? INGREDIENTS.filter((i) => !i.flags.has('staple') && norm(i.name).includes(q) && !ui.dietForm.avoidIngs.includes(i.id)).slice(0, 5) : [];
     document.getElementById('cd-sugg').innerHTML = sugg.length ? `<div class="suggest">${sugg.map((i) => `<button data-act="cd-avoid-add" data-id="${i.id}"><span>${esc(i.name)}</span><span class="tag">Evitar</span></button>`).join('')}</div>` : '';
+  } else if (t.id === 'portion-val' && ui.portion) {
+    if (t.value !== '') setPortionValue(t.value, false);
   } else if (t.id === 'recipe-search') {
     ui.recipes.query = t.value;
     document.getElementById('recipe-list').innerHTML = recipeList();

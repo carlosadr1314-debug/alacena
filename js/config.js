@@ -1,10 +1,10 @@
 // ── Configuración general de la app ──
 
 // Nombre provisional. Cámbialo aquí (y en index.html <title> y manifest.webmanifest).
-export const APP_NAME = 'Alacena';
+export const APP_NAME = 'Valita';
 
 // URL de tu Cloudflare Worker (ver worker/worker.js y el README).
-// Ejemplo: 'https://alacena-ia.tu-cuenta.workers.dev'
+// Ejemplo: 'https://tu-worker.tu-cuenta.workers.dev'
 // Vacío = la IA aparece como "no configurada".
 export const AI_ENDPOINT = 'https://alacena.carlosadr1314.workers.dev';
 
