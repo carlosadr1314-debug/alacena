@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Valita se mudó</title>
+  <meta http-equiv="refresh" content="0; url=https://valita.com.mx/">
+  <link rel="canonical" href="https://valita.com.mx/">
+  <style>body{font-family:system-ui,sans-serif;background:#FFFDF7;color:#22302A;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:24px}a{color:#C2410C;font-weight:700}</style>
+</head>
+<body>
+  <p>Valita ahora vive en <a href="https://valita.com.mx/">valita.com.mx</a>. Te llevamos allá…</p>
+  <script>
+    // Quita la versión vieja guardada en el teléfono y manda al nuevo sitio
+    if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister()));
+    if (window.caches) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k)));
+    location.replace('https://valita.com.mx/');
+  </script>
+</body>
+</html>
